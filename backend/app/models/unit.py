@@ -1,6 +1,6 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, JSON
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -17,8 +17,8 @@ class Unit(Base):
     position_x = Column(Integer, nullable=True)
     position_y = Column(Integer, nullable=True)
     order_index = Column(Integer, nullable=True)
-    passport_params_json = Column(JSONB, nullable=True)
-    limits_json = Column(JSONB, nullable=True)
+    passport_params_json = Column(JSON, nullable=True)
+    limits_json = Column(JSON, nullable=True)
     participates_in_opt = Column(Boolean, nullable=False, default=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
