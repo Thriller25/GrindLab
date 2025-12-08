@@ -1,39 +1,14 @@
-import uuid
+﻿import uuid
 
 from fastapi.testclient import TestClient
 
-
-def _create_plant(client: TestClient) -> str:
-    payload = {"name": "Test Plant", "code": "TP-001", "company": "TestCo", "is_active": True}
-    resp = client.post("/api/plants/", json=payload)
-    assert resp.status_code == 201
-    return resp.json()["id"]
-
-
-def _create_flowsheet(client: TestClient, plant_id: str) -> str:
-    payload = {"plant_id": plant_id, "name": "Test Flowsheet", "description": "desc", "status": "DRAFT"}
-    resp = client.post("/api/flowsheets/", json=payload)
-    assert resp.status_code == 201
-    return resp.json()["id"]
-
-
-def _create_flowsheet_version(client: TestClient, flowsheet_id: str) -> str:
-    payload = {
-        "flowsheet_id": flowsheet_id,
-        "version_label": "v1",
-        "status": "DRAFT",
-        "is_active": True,
-        "comment": "first",
-    }
-    resp = client.post("/api/flowsheet-versions/", json=payload)
-    assert resp.status_code == 201
-    return resp.json()["id"]
+from .utils import create_flowsheet, create_flowsheet_version, create_plant
 
 
 def test_calc_run_happy_path(client: TestClient):
-    plant_id = _create_plant(client)
-    flowsheet_id = _create_flowsheet(client, plant_id)
-    flowsheet_version_id = _create_flowsheet_version(client, flowsheet_id)
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
 
     calc_payload = {
         "flowsheet_version_id": flowsheet_version_id,
@@ -70,42 +45,30 @@ def test_calc_run_not_found_flowsheet_version(client: TestClient):
 
 
 def test_calc_run_invalid_input_json(client: TestClient):
-    # Сначала создаём связку Plant → Flowsheet → FlowsheetVersion
-    plant_id = _create_plant(client)
-    flowsheet_id = _create_flowsheet(client, plant_id)
-    flowsheet_version_id = _create_flowsheet_version(client, flowsheet_id)
-
-    # Формируем payload с НЕВАЛИДНЫМ input_json:
-    # отсутствует обязательное поле target_p80_microns
-    payload = {
-        "flowsheet_version_id": flowsheet_version_id,
-        "scenario_name": "Invalid input test",
-        "comment": "Missing target_p80_microns",
-        "input_json": {
-            "feed_tph": 100
-            # "target_p80_microns" не передаём специально
-        }
-    }
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
 
     resp = client.post(
         "/api/calc/flowsheet-run",
-        json=payload,
+        json={
+            "flowsheet_version_id": flowsheet_version_id,
+            "input_json": {"feed_tph": 100},
+        },
     )
 
-    # Структурные ошибки input_json теперь валидирует Pydantic → 422
     assert resp.status_code == 422
 
     body = resp.json()
-    # Это стандартный формат ошибки валидации FastAPI/Pydantic
     assert "detail" in body
     assert isinstance(body["detail"], list)
 
 
 
 def test_get_calc_runs_list(client: TestClient):
-    plant_id = _create_plant(client)
-    flowsheet_id = _create_flowsheet(client, plant_id)
-    flowsheet_version_id = _create_flowsheet_version(client, flowsheet_id)
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
 
     # Create two runs
     for scenario in ["Baseline", "Alt"]:
