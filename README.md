@@ -133,3 +133,22 @@ MVP GrindLab предполагает следующую целевую архи
 6. Открыть Swagger по адресу http://127.0.0.1:8000/docs.
 
 По умолчанию используется SQLite-файл `grindlab.db` в папке `backend`.
+
+## Backend (FastAPI, SQLite) — как запустить
+1. Клонировать репозиторий и перейти в папку backend:
+   - `cd backend`
+2. Создать и активировать виртуальное окружение:
+   - Windows: `python -m venv .venv` и `.venv\Scripts\activate`
+   - macOS / Linux: `python3 -m venv .venv` и `source .venv/bin/activate`
+3. Установить зависимости:
+   - `pip install -r requirements.txt`
+4. Создать файл `.env` на основе `.env.example`:
+   - `copy .env.example .env` (или аналог для своей ОС)
+   - при необходимости отредактировать значения DB_URL и APP_DEBUG.
+5. Запустить backend:
+   - убедиться, что текущая директория — `backend`
+   - `uvicorn app.main:app --reload`
+6. Открыть Swagger UI:
+   - http://127.0.0.1:8000/docs
+
+Dev-конфигурация использует SQLite-файл `grindlab.db` в папке `backend`.
