@@ -6,6 +6,7 @@ from .flowsheet_version import (
     FlowsheetVersionUpdate,
 )
 from .unit import UnitCreate, UnitRead, UnitUpdate
+from .calc_run import CalcRunRead
 
 __all__ = [
     "PlantCreate",
@@ -20,4 +21,5 @@ __all__ = [
     "UnitCreate",
     "UnitRead",
     "UnitUpdate",
+    "CalcRunRead",
 ]

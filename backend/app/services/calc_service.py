@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app import models
 from ..schemas.calc import FlowsheetCalcRequest, FlowsheetCalcResult, UnitCalcResult
 
 
@@ -26,9 +27,22 @@ def run_flowsheet_calc(db: Session, payload: FlowsheetCalcRequest) -> FlowsheetC
         else 0.0
     )
 
-    return FlowsheetCalcResult(
+    result = FlowsheetCalcResult(
         flowsheet_version_id=payload.flowsheet_version_id,
         total_throughput_tph=total_throughput_tph,
         total_energy_kwh_per_t=total_energy_kwh_per_t,
         units=unit_results,
     )
+
+    payload_dict = payload.dict()
+    result_dict = result.dict()
+
+    calc_run = models.CalcRun(
+        flowsheet_version_id=payload.flowsheet_version_id,
+        request_json=payload_dict,
+        result_json=result_dict,
+    )
+    db.add(calc_run)
+    db.commit()
+
+    return result
