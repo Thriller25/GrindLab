@@ -1,5 +1,7 @@
-from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy.orm import Session
 
 from app import models
 from ..schemas.calc import FlowsheetCalcRequest, FlowsheetCalcResult, UnitCalcResult
@@ -9,6 +11,7 @@ def run_flowsheet_calc(db: Session, payload: FlowsheetCalcRequest) -> FlowsheetC
     """
     Very simple MVP calculation using deterministic mock values.
     """
+    started_at = datetime.now(timezone.utc)
     unit_results: list[UnitCalcResult] = []
 
     for unit in payload.units:
@@ -37,9 +40,15 @@ def run_flowsheet_calc(db: Session, payload: FlowsheetCalcRequest) -> FlowsheetC
 
     payload_dict = jsonable_encoder(payload)
     result_dict = jsonable_encoder(result)
+    finished_at = datetime.now(timezone.utc)
 
     calc_run = models.CalcRun(
         flowsheet_version_id=payload.flowsheet_version_id,
+        scenario_name=payload.scenario_name,
+        comment=payload.comment,
+        status="success",
+        started_at=started_at,
+        finished_at=finished_at,
         request_json=payload_dict,
         result_json=result_dict,
     )

@@ -14,6 +14,8 @@ class UnitCalcInput(BaseModel):
 class FlowsheetCalcRequest(BaseModel):
     flowsheet_version_id: UUID
     ore_density_t_per_m3: Optional[float] = None
+    scenario_name: Optional[str] = None
+    comment: Optional[str] = None
     units: List[UnitCalcInput]
 
 
