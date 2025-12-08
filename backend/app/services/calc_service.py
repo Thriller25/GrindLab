@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app import models
+from app.schemas.calc_io import CalcInput, CalcResultSummary
 from app.schemas.calc_run import CalcRunCreate, CalcRunRead
 
 logger = logging.getLogger(__name__)
@@ -33,25 +34,24 @@ def get_flowsheet_version_or_404(db: Session, flowsheet_version_id):
     return instance
 
 
-def validate_input_json(input_json: Any) -> Dict[str, float]:
-    if input_json is None or not isinstance(input_json, dict):
+def validate_input_json(input_json: Any) -> CalcInput:
+    if input_json is None:
         raise CalculationError("input_json is required and must be an object")
 
-    required_keys = ("feed_tph", "target_p80_microns")
-    for key in required_keys:
-        if key not in input_json:
+    if isinstance(input_json, CalcInput):
+        model = input_json
+    elif isinstance(input_json, dict):
+        try:
+            model = CalcInput.model_validate(input_json)
+        except Exception:
             raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
+    else:
+        raise CalculationError("input_json is required and must be an object")
 
-    try:
-        feed_tph = float(input_json["feed_tph"])
-        target_p80_microns = float(input_json["target_p80_microns"])
-    except (TypeError, ValueError):
+    if model.feed_tph <= 0 or model.target_p80_microns <= 0:
         raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
 
-    if feed_tph <= 0 or target_p80_microns <= 0:
-        raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
-
-    return {"feed_tph": feed_tph, "target_p80_microns": target_p80_microns}
+    return model
 
 
 def _persist_status(
@@ -87,7 +87,7 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
         comment=payload.comment,
         status=CalcRunStatus.PENDING.value,
         started_at=started_at,
-        input_json=payload.input_json,
+        input_json=validated_input.model_dump(),
         error_message=None,
     )
     db.add(calc_run)
@@ -97,13 +97,13 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
     try:
         _persist_status(db, calc_run, CalcRunStatus.RUNNING)
 
-        result_json: Dict[str, Any] = {
-            "flowsheet_version_id": str(payload.flowsheet_version_id),
-            "summary": {
-                "throughput_tph": validated_input["feed_tph"],
-                "p80_microns": validated_input["target_p80_microns"],
-            },
-        }
+        result_model = CalcResultSummary(
+            throughput_tph=validated_input.feed_tph,
+            specific_energy_kwh_per_t=10.0,
+            p80_out_microns=validated_input.target_p80_microns,
+            circuit_efficiency_index=0.95,
+        )
+        result_json: Dict[str, Any] = result_model.model_dump()
 
         _persist_status(
             db,
@@ -132,5 +132,4 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
         )
         logger.exception("Unexpected calculation error")
         raise
-
     return CalcRunRead.model_validate(calc_run, from_attributes=True)

@@ -1,15 +1,17 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+from app.schemas.calc_io import CalcInput, CalcResultSummary
 
 
 class CalcRunCreate(BaseModel):
     flowsheet_version_id: UUID
     scenario_name: Optional[str] = None
     comment: Optional[str] = None
-    input_json: Optional[Dict[str, Any]] = None
+    input_json: Optional[CalcInput] = None
 
 
 class CalcRunRead(BaseModel):
@@ -21,8 +23,8 @@ class CalcRunRead(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     error_message: Optional[str] = None
-    input_json: Optional[Dict[str, Any]] = None
-    result_json: Optional[Dict[str, Any]] = None
+    input_json: Optional[CalcInput] = None
+    result_json: Optional[CalcResultSummary] = None
     created_at: datetime
     updated_at: datetime
 
@@ -38,6 +40,8 @@ class CalcRunListItem(BaseModel):
     finished_at: Optional[datetime] = None
     comment: Optional[str] = None
     error_message: Optional[str] = None
+    input_json: Optional[CalcInput] = None
+    result_json: Optional[CalcResultSummary] = None
 
     model_config = {"from_attributes": True}
 
