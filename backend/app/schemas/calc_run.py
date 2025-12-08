@@ -20,6 +20,7 @@ class CalcRunRead(BaseModel):
     status: str
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    error_message: Optional[str] = None
     input_json: Optional[Dict[str, Any]] = None
     result_json: Optional[Dict[str, Any]] = None
     created_at: datetime
@@ -36,6 +37,7 @@ class CalcRunListItem(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     comment: Optional[str] = None
+    error_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

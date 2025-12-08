@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Dict
 
 from fastapi import HTTPException
@@ -13,6 +14,13 @@ logger = logging.getLogger(__name__)
 
 class CalculationError(Exception):
     """Raised for predictable calculation/validation errors."""
+
+
+class CalcRunStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
 
 
 def get_flowsheet_version_or_404(db: Session, flowsheet_version_id):
@@ -46,6 +54,25 @@ def validate_input_json(input_json: Any) -> Dict[str, float]:
     return {"feed_tph": feed_tph, "target_p80_microns": target_p80_microns}
 
 
+def _persist_status(
+    db: Session,
+    calc_run: models.CalcRun,
+    status: CalcRunStatus,
+    finished_at: datetime | None = None,
+    result_json: Dict[str, Any] | None = None,
+    error_message: str | None = None,
+) -> None:
+    calc_run.status = status.value
+    if finished_at:
+        calc_run.finished_at = finished_at
+    if result_json is not None:
+        calc_run.result_json = result_json
+    calc_run.error_message = error_message
+    db.add(calc_run)
+    db.commit()
+    db.refresh(calc_run)
+
+
 def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRead:
     """
     MVP calculation: persist CalcRun, mock result JSON, and update status.
@@ -58,15 +85,18 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
         flowsheet_version_id=payload.flowsheet_version_id,
         scenario_name=payload.scenario_name,
         comment=payload.comment,
-        status="running",
+        status=CalcRunStatus.PENDING.value,
         started_at=started_at,
         input_json=payload.input_json,
+        error_message=None,
     )
     db.add(calc_run)
     db.commit()
     db.refresh(calc_run)
 
     try:
+        _persist_status(db, calc_run, CalcRunStatus.RUNNING)
+
         result_json: Dict[str, Any] = {
             "flowsheet_version_id": str(payload.flowsheet_version_id),
             "summary": {
@@ -75,21 +105,32 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
             },
         }
 
-        calc_run.status = "success"
-        calc_run.result_json = result_json
-    except CalculationError:
-        calc_run.status = "failed"
-        calc_run.result_json = {"error": "Calculation validation failed"}
+        _persist_status(
+            db,
+            calc_run,
+            CalcRunStatus.SUCCESS,
+            finished_at=datetime.now(timezone.utc),
+            result_json=result_json,
+            error_message=None,
+        )
+    except CalculationError as exc:
+        _persist_status(
+            db,
+            calc_run,
+            CalcRunStatus.FAILED,
+            finished_at=datetime.now(timezone.utc),
+            error_message=str(exc),
+        )
         raise
     except Exception as exc:  # pragma: no cover - unexpected error branch
-        calc_run.status = "failed"
-        calc_run.result_json = {"error": str(exc)}
+        _persist_status(
+            db,
+            calc_run,
+            CalcRunStatus.FAILED,
+            finished_at=datetime.now(timezone.utc),
+            error_message="Internal calculation error",
+        )
         logger.exception("Unexpected calculation error")
         raise
-    finally:
-        calc_run.finished_at = datetime.now(timezone.utc)
-        db.add(calc_run)
-        db.commit()
-        db.refresh(calc_run)
 
     return CalcRunRead.model_validate(calc_run, from_attributes=True)

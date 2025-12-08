@@ -18,6 +18,7 @@ class CalcRun(Base):
     status = Column(String(32), nullable=False, default="pending")
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(String, nullable=True, default=None)
     input_json = Column(JSON, nullable=True)
     result_json = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

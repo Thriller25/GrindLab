@@ -1,9 +1,10 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db
@@ -22,12 +23,21 @@ def list_calc_runs(
     limit: int = 50,
     offset: int = 0,
     status: Optional[str] = None,
+    scenario_query: Optional[str] = Query(None, description="Substring to match in scenario_name"),
+    started_from: Optional[datetime] = Query(None, description="Lower bound for started_at (inclusive)"),
+    started_to: Optional[datetime] = Query(None, description="Upper bound for started_at (inclusive)"),
     db: Session = Depends(get_db),
 ) -> CalcRunListResponse:
     get_flowsheet_version_or_404(db, flowsheet_version_id)
     query = db.query(models.CalcRun).filter(models.CalcRun.flowsheet_version_id == flowsheet_version_id)
     if status:
         query = query.filter(models.CalcRun.status == status)
+    if scenario_query:
+        query = query.filter(models.CalcRun.scenario_name.ilike(f"%{scenario_query}%"))
+    if started_from:
+        query = query.filter(models.CalcRun.started_at >= started_from)
+    if started_to:
+        query = query.filter(models.CalcRun.started_at <= started_to)
 
     total = query.with_entities(func.count()).scalar() or 0
 
