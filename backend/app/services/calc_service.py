@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from fastapi.encoders import jsonable_encoder
 
 from app import models
 from ..schemas.calc import FlowsheetCalcRequest, FlowsheetCalcResult, UnitCalcResult
@@ -34,8 +35,8 @@ def run_flowsheet_calc(db: Session, payload: FlowsheetCalcRequest) -> FlowsheetC
         units=unit_results,
     )
 
-    payload_dict = payload.dict()
-    result_dict = result.dict()
+    payload_dict = jsonable_encoder(payload)
+    result_dict = jsonable_encoder(result)
 
     calc_run = models.CalcRun(
         flowsheet_version_id=payload.flowsheet_version_id,
