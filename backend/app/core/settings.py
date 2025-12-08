@@ -1,9 +1,9 @@
-﻿from pydantic import BaseSettings
+﻿from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DB_URL: str = "sqlite:///./grindlab.db"
-    APP_DEBUG: bool = True
+    db_url: str = "sqlite:///./grindlab.db"
+    app_debug: bool = True
 
     class Config:
         env_file = ".env"
