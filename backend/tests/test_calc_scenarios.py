@@ -64,6 +64,7 @@ def test_calc_run_by_scenario_happy_path(client: TestClient):
     body = resp.json()
     assert body["flowsheet_version_id"] == flowsheet_version_id
     assert body["scenario_name"] == scenario_payload["name"]
+    assert body["scenario_id"] == scenario_id
     assert body["status"] == "success"
     assert body["error_message"] is None
     assert body["input_json"]["feed_tph"] == scenario_payload["default_input_json"]["feed_tph"]
@@ -71,3 +72,13 @@ def test_calc_run_by_scenario_happy_path(client: TestClient):
     assert body["result_json"]["throughput_tph"] == scenario_payload["default_input_json"]["feed_tph"]
     assert "specific_energy_kwh_per_t" in body["result_json"]
     assert "p80_out_microns" in body["result_json"]
+
+    list_resp = client.get(
+        f"/api/calc-runs/by-flowsheet-version/{flowsheet_version_id}",
+        params={"scenario_id": scenario_id},
+    )
+    assert list_resp.status_code == 200
+    list_body = list_resp.json()
+    assert list_body["total"] == 1
+    assert len(list_body["items"]) == 1
+    assert list_body["items"][0]["scenario_id"] == scenario_id

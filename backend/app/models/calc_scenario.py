@@ -19,3 +19,4 @@ class CalcScenario(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     flowsheet_version = relationship("FlowsheetVersion", back_populates="calc_scenarios")
+    calc_runs = relationship("CalcRun", back_populates="scenario")

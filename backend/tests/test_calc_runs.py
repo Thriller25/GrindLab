@@ -20,6 +20,7 @@ def test_calc_run_happy_path(client: TestClient):
     assert resp.status_code in (200, 201)
     body = resp.json()
     assert body["flowsheet_version_id"] == flowsheet_version_id
+    assert body["scenario_id"] is None
     assert body["status"] == "success"
     assert body["error_message"] is None
     assert body["input_json"]["feed_tph"] == 100
@@ -89,5 +90,6 @@ def test_get_calc_runs_list(client: TestClient):
     assert len(body["items"]) >= 2
     assert any(item.get("scenario_name") for item in body["items"])
     for item in body["items"]:
+        assert "scenario_id" in item
         assert "feed_tph" in item["input_json"]
         assert "throughput_tph" in item["result_json"]

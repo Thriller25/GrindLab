@@ -9,6 +9,7 @@ from app.schemas.calc_io import CalcInput, CalcResultSummary
 
 class CalcRunCreate(BaseModel):
     flowsheet_version_id: UUID
+    scenario_id: Optional[UUID] = None
     scenario_name: Optional[str] = None
     comment: Optional[str] = None
     input_json: Optional[CalcInput] = None
@@ -17,6 +18,7 @@ class CalcRunCreate(BaseModel):
 class CalcRunRead(BaseModel):
     id: UUID
     flowsheet_version_id: UUID
+    scenario_id: Optional[UUID] = None
     scenario_name: Optional[str] = None
     comment: Optional[str] = None
     status: str
@@ -34,6 +36,7 @@ class CalcRunRead(BaseModel):
 class CalcRunListItem(BaseModel):
     id: UUID
     flowsheet_version_id: UUID
+    scenario_id: Optional[UUID] = None
     scenario_name: Optional[str] = None
     status: str
     started_at: Optional[datetime] = None

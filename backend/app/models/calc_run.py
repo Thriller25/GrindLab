@@ -13,6 +13,7 @@ class CalcRun(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     flowsheet_version_id = Column(UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False)
+    scenario_id = Column(UUID(as_uuid=True), ForeignKey("calc_scenario.id"), nullable=True)
     scenario_name = Column(String(255), nullable=True, default=None)
     comment = Column(Text, nullable=True, default=None)
     status = Column(String(32), nullable=False, default="pending")
@@ -25,3 +26,4 @@ class CalcRun(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     flowsheet_version = relationship("FlowsheetVersion", back_populates="calc_runs")
+    scenario = relationship("CalcScenario", back_populates="calc_runs")

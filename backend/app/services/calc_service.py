@@ -94,6 +94,7 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
     started_at = datetime.now(timezone.utc)
     calc_run = models.CalcRun(
         flowsheet_version_id=payload.flowsheet_version_id,
+        scenario_id=payload.scenario_id,
         scenario_name=payload.scenario_name,
         comment=payload.comment,
         status=CalcRunStatus.PENDING.value,
@@ -154,6 +155,7 @@ def run_flowsheet_calculation_by_scenario(db: Session, scenario_id: uuid.UUID) -
     validated_input = validate_input_json(scenario.default_input_json)
     payload = CalcRunCreate(
         flowsheet_version_id=scenario.flowsheet_version_id,
+        scenario_id=scenario.id,
         scenario_name=scenario.name,
         input_json=validated_input,
     )

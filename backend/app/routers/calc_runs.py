@@ -23,6 +23,7 @@ def list_calc_runs(
     limit: int = 50,
     offset: int = 0,
     status: Optional[str] = None,
+    scenario_id: Optional[uuid.UUID] = None,
     scenario_query: Optional[str] = Query(None, description="Substring to match in scenario_name"),
     started_from: Optional[datetime] = Query(None, description="Lower bound for started_at (inclusive)"),
     started_to: Optional[datetime] = Query(None, description="Upper bound for started_at (inclusive)"),
@@ -32,6 +33,8 @@ def list_calc_runs(
     query = db.query(models.CalcRun).filter(models.CalcRun.flowsheet_version_id == flowsheet_version_id)
     if status:
         query = query.filter(models.CalcRun.status == status)
+    if scenario_id:
+        query = query.filter(models.CalcRun.scenario_id == scenario_id)
     if scenario_query:
         query = query.filter(models.CalcRun.scenario_name.ilike(f"%{scenario_query}%"))
     if started_from:
