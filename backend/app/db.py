@@ -1,9 +1,10 @@
-import os
-from sqlalchemy import create_engine
+﻿from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Для разработки используем SQLite
-DB_URL = os.getenv("GRINDLAB_DB_URL", "sqlite:///./grindlab.db")
+from app.core.settings import settings
+
+# گ"گ>‘? ‘?گّگْ‘?گّگ+گ?‘'گَگٌ گٌ‘?گُگ? SQLite
+DB_URL = settings.DB_URL
 
 engine = create_engine(DB_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
@@ -18,9 +19,9 @@ def get_db():
         db.close()
 
 
-# ВАЖНО: импорт моделей после объявления Base,
-# чтобы metadata знала про все таблицы
-from app import models  # noqa: E402,F401  - импорт оставляем в конце файла
+# گ'گ?گ-گ?گ?: گٌگ?گُگ?‘?‘' گ?گ?گ?گçگ>گçگü گُگ?‘?گ>گç گ?گ+‘?‘?گ?گ>گçگ?گٌ‘? Base,
+# ‘ط‘'گ?گ+‘< metadata گْگ?گّگ>گّ گُ‘?گ? گ?‘?گç ‘'گّگ+گ>گٌ‘إ‘<
+from app import models  # noqa: E402,F401  - گٌگ?گُگ?‘?‘' گ?‘?‘'گّگ?گ>‘?گçگ? گ? گَگ?گ?‘إگç ‘"گّگüگ>گّ
 
-# Создаём таблицы в БД, если их ещё нет
+# گِگ?گْگ?گّ‘'گ? ‘'گّگ+گ>گٌ‘إ‘< گ? گ'گ", گç‘?گ>گٌ گٌ‘: گç‘%‘' گ?گç‘'
 Base.metadata.create_all(bind=engine)
