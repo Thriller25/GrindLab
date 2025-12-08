@@ -21,3 +21,4 @@ class FlowsheetVersion(Base):
     flowsheet = relationship("Flowsheet", back_populates="versions")
     units = relationship("Unit", back_populates="flowsheet_version")
     calc_runs = relationship("CalcRun", back_populates="flowsheet_version")
+    calc_scenarios = relationship("CalcScenario", back_populates="flowsheet_version")

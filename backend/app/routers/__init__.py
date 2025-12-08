@@ -6,6 +6,7 @@ from .flowsheet_versions import router as flowsheet_versions_router
 from .units import router as units_router
 from . import calc
 from . import calc_runs
+from . import calc_scenarios
 
 api_router = APIRouter()
 api_router.include_router(plants_router, prefix="/plants", tags=["plants"])
@@ -21,4 +22,5 @@ __all__ = [
     "units_router",
     "calc",
     "calc_runs",
+    "calc_scenarios",
 ]

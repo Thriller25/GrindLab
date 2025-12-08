@@ -7,6 +7,14 @@ from .flowsheet_version import (
 )
 from .unit import UnitCreate, UnitRead, UnitUpdate
 from .calc_run import CalcRunRead
+from .calc_scenario import (
+    CalcScenarioBase,
+    CalcScenarioCreate,
+    CalcScenarioUpdate,
+    CalcScenarioRead,
+    CalcScenarioListItem,
+    CalcScenarioListResponse,
+)
 
 __all__ = [
     "PlantCreate",
@@ -22,4 +30,10 @@ __all__ = [
     "UnitRead",
     "UnitUpdate",
     "CalcRunRead",
+    "CalcScenarioBase",
+    "CalcScenarioCreate",
+    "CalcScenarioUpdate",
+    "CalcScenarioRead",
+    "CalcScenarioListItem",
+    "CalcScenarioListResponse",
 ]

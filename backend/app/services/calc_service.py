@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict
@@ -32,6 +33,16 @@ def get_flowsheet_version_or_404(db: Session, flowsheet_version_id):
     if instance is None:
         raise HTTPException(status_code=404, detail=f"FlowsheetVersion {flowsheet_version_id} not found")
     return instance
+
+
+def get_calc_scenario_or_404(db: Session, scenario_id: uuid.UUID):
+    """
+    Fetch CalcScenario by primary key or raise 404.
+    """
+    scenario = db.get(models.CalcScenario, scenario_id)
+    if scenario is None:
+        raise HTTPException(status_code=404, detail=f"CalcScenario {scenario_id} not found")
+    return scenario
 
 
 def validate_input_json(input_json: Any) -> CalcInput:
@@ -133,3 +144,17 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
         logger.exception("Unexpected calculation error")
         raise
     return CalcRunRead.model_validate(calc_run, from_attributes=True)
+
+
+def run_flowsheet_calculation_by_scenario(db: Session, scenario_id: uuid.UUID) -> CalcRunRead:
+    """
+    Run calculation using stored CalcScenario defaults.
+    """
+    scenario = get_calc_scenario_or_404(db, scenario_id)
+    validated_input = validate_input_json(scenario.default_input_json)
+    payload = CalcRunCreate(
+        flowsheet_version_id=scenario.flowsheet_version_id,
+        scenario_name=scenario.name,
+        input_json=validated_input,
+    )
+    return run_flowsheet_calculation(db=db, payload=payload)
