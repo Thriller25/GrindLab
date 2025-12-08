@@ -2,20 +2,44 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class CalcRunCreate(BaseModel):
+    flowsheet_version_id: UUID
+    scenario_name: Optional[str] = None
+    comment: Optional[str] = None
+    input_json: Optional[Dict[str, Any]] = None
 
 
 class CalcRunRead(BaseModel):
     id: UUID
     flowsheet_version_id: UUID
-    created_at: datetime
     scenario_name: Optional[str] = None
     comment: Optional[str] = None
     status: str
-    started_at: datetime
-    finished_at: datetime
-    request_json: Dict[str, Any]
-    result_json: Dict[str, Any]
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    input_json: Optional[Dict[str, Any]] = None
+    result_json: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
+
+
+class CalcRunListItem(BaseModel):
+    id: UUID
+    flowsheet_version_id: UUID
+    scenario_name: Optional[str] = None
+    status: str
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    comment: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CalcRunListResponse(BaseModel):
+    items: list[CalcRunListItem]
+    total: int

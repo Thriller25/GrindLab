@@ -2,15 +2,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.calc import FlowsheetCalcRequest, FlowsheetCalcResult
-from app.services.calc_service import run_flowsheet_calc
+from app.schemas.calc_run import CalcRunCreate, CalcRunRead
+from app.services.calc_service import run_flowsheet_calculation
 
 router = APIRouter(prefix="/api/calc", tags=["calc"])
 
 
-@router.post("/flowsheet-run", response_model=FlowsheetCalcResult)
-def calc_flowsheet(payload: FlowsheetCalcRequest, db: Session = Depends(get_db)):
+@router.post("/flowsheet-run", response_model=CalcRunRead)
+def calc_flowsheet(payload: CalcRunCreate, db: Session = Depends(get_db)) -> CalcRunRead:
     """
-    Run comminution flowsheet calculation.
+    Run comminution flowsheet calculation and persist CalcRun metadata.
     """
-    return run_flowsheet_calc(db=db, payload=payload)
+    return run_flowsheet_calculation(db=db, payload=payload)

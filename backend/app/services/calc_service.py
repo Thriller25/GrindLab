@@ -1,58 +1,47 @@
 from datetime import datetime, timezone
+from typing import Any, Dict
 
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app import models
-from ..schemas.calc import FlowsheetCalcRequest, FlowsheetCalcResult, UnitCalcResult
+from app.schemas.calc_run import CalcRunCreate, CalcRunRead
 
 
-def run_flowsheet_calc(db: Session, payload: FlowsheetCalcRequest) -> FlowsheetCalcResult:
+def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRead:
     """
-    Very simple MVP calculation using deterministic mock values.
+    MVP calculation: persist CalcRun, mock result JSON, and update status.
     """
     started_at = datetime.now(timezone.utc)
-    unit_results: list[UnitCalcResult] = []
-
-    for unit in payload.units:
-        unit_results.append(
-            UnitCalcResult(
-                unit_id=unit.unit_id,
-                throughput_tph=unit.feed_rate_tph,
-                specific_energy_kwh_per_t=10.0,
-                p80_um=unit.target_p80_um or 200.0,
-            )
-        )
-
-    total_throughput_tph = sum(unit.throughput_tph for unit in unit_results)
-    total_energy_kwh_per_t = (
-        sum(unit.specific_energy_kwh_per_t for unit in unit_results) / len(unit_results)
-        if unit_results
-        else 0.0
-    )
-
-    result = FlowsheetCalcResult(
-        flowsheet_version_id=payload.flowsheet_version_id,
-        total_throughput_tph=total_throughput_tph,
-        total_energy_kwh_per_t=total_energy_kwh_per_t,
-        units=unit_results,
-    )
-
-    payload_dict = jsonable_encoder(payload)
-    result_dict = jsonable_encoder(result)
-    finished_at = datetime.now(timezone.utc)
-
     calc_run = models.CalcRun(
         flowsheet_version_id=payload.flowsheet_version_id,
         scenario_name=payload.scenario_name,
         comment=payload.comment,
-        status="success",
+        status="running",
         started_at=started_at,
-        finished_at=finished_at,
-        request_json=payload_dict,
-        result_json=result_dict,
+        input_json=payload.input_json,
     )
     db.add(calc_run)
     db.commit()
+    db.refresh(calc_run)
 
-    return result
+    try:
+        result_json: Dict[str, Any] = {
+            "flowsheet_version_id": str(payload.flowsheet_version_id),
+            "summary": {
+                "throughput_tph": 100.0,
+                "p80_microns": 150.0,
+            },
+        }
+
+        calc_run.status = "success"
+        calc_run.result_json = result_json
+    except Exception as exc:  # pragma: no cover - MVP error branch
+        calc_run.status = "failed"
+        calc_run.result_json = {"error": str(exc)}
+    finally:
+        calc_run.finished_at = datetime.now(timezone.utc)
+        db.add(calc_run)
+        db.commit()
+        db.refresh(calc_run)
+
+    return CalcRunRead.model_validate(calc_run, from_attributes=True)
