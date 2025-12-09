@@ -52,3 +52,18 @@ class CalcRunListItem(BaseModel):
 class CalcRunListResponse(BaseModel):
     items: list[CalcRunListItem]
     total: int
+
+
+class CalcRunComparisonItem(BaseModel):
+    id: UUID
+    scenario_id: Optional[UUID] = None
+    status: str
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    input: CalcInput
+    result: Optional[CalcResultSummary] = None
+
+
+class CalcRunCompareResponse(BaseModel):
+    items: list[CalcRunComparisonItem]
+    total: int

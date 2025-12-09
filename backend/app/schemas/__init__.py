@@ -9,7 +9,7 @@ from .flowsheet_version import (
 )
 from .flowsheet_overview import FlowsheetVersionOverviewResponse, ScenarioWithLatestRun
 from .unit import UnitCreate, UnitRead, UnitUpdate
-from .calc_run import CalcRunRead
+from .calc_run import CalcRunRead, CalcRunComparisonItem, CalcRunCompareResponse
 from .calc_scenario import (
     CalcScenarioBase,
     CalcScenarioCreate,
@@ -37,6 +37,8 @@ __all__ = [
     "UnitRead",
     "UnitUpdate",
     "CalcRunRead",
+    "CalcRunComparisonItem",
+    "CalcRunCompareResponse",
     "CalcScenarioBase",
     "CalcScenarioCreate",
     "CalcScenarioUpdate",

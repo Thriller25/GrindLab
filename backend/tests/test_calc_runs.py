@@ -93,3 +93,59 @@ def test_get_calc_runs_list(client: TestClient):
         assert "scenario_id" in item
         assert "feed_tph" in item["input_json"]
         assert "throughput_tph" in item["result_json"]
+
+
+def test_compare_calc_runs(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    run_ids = []
+    inputs = [
+        {"feed_tph": 100, "target_p80_microns": 140},
+        {"feed_tph": 150, "target_p80_microns": 180},
+    ]
+    for input_json in inputs:
+        resp = client.post(
+            "/api/calc/flowsheet-run",
+            json={
+                "flowsheet_version_id": flowsheet_version_id,
+                "scenario_name": "Scenario compare",
+                "input_json": input_json,
+            },
+        )
+        assert resp.status_code in (200, 201)
+        run_ids.append(resp.json()["id"])
+
+    compare_resp = client.get(
+        "/api/calc-runs/compare",
+        params=[("run_ids", rid) for rid in run_ids],
+    )
+    assert compare_resp.status_code == 200
+    compare_body = compare_resp.json()
+
+    assert compare_body["total"] == 2
+    assert len(compare_body["items"]) == 2
+    returned_ids = {item["id"] for item in compare_body["items"]}
+    assert set(run_ids) == returned_ids
+
+    item_map = {item["id"]: item for item in compare_body["items"]}
+    for rid, input_json in zip(run_ids, inputs):
+        item = item_map[rid]
+        assert item["status"] == "success"
+        assert item["input"]["feed_tph"] == input_json["feed_tph"]
+        assert item["input"]["target_p80_microns"] == input_json["target_p80_microns"]
+        assert item["result"] is not None
+        assert "throughput_tph" in item["result"]
+        assert "specific_energy_kwh_per_t" in item["result"]
+        assert "p80_out_microns" in item["result"]
+
+
+def test_compare_calc_runs_not_found(client: TestClient):
+    random_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+    compare_resp = client.get(
+        "/api/calc-runs/compare",
+        params=[("run_ids", rid) for rid in random_ids],
+    )
+    assert compare_resp.status_code == 404
+    assert "No calc runs found" in compare_resp.json()["detail"]

@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db
-from app.schemas.calc_run import CalcRunListItem, CalcRunListResponse, CalcRunRead
+from app.schemas.calc_run import (
+    CalcRunCompareResponse,
+    CalcRunComparisonItem,
+    CalcRunListItem,
+    CalcRunListResponse,
+    CalcRunRead,
+)
+from app.schemas.calc_io import CalcInput, CalcResultSummary
 from app.services.calc_service import get_calc_scenario_or_404, get_flowsheet_version_or_404
 
 router = APIRouter(prefix="/api/calc-runs", tags=["calc-runs"])
@@ -75,3 +82,41 @@ def get_latest_calc_run_by_scenario(
         raise HTTPException(status_code=404, detail=f"No calc runs found for scenario {scenario_id}")
 
     return CalcRunRead.model_validate(calc_run, from_attributes=True)
+
+
+@router.get("/compare", response_model=CalcRunCompareResponse)
+def compare_calc_runs(
+    run_ids: Optional[list[uuid.UUID]] = Query(default=None),
+    only_success: bool = Query(True, description="Whether to include only successful runs"),
+    db: Session = Depends(get_db),
+) -> CalcRunCompareResponse:
+    if not run_ids:
+        raise HTTPException(status_code=400, detail="run_ids query parameter is required")
+
+    query = db.query(models.CalcRun).filter(models.CalcRun.id.in_(run_ids))
+    if only_success:
+        query = query.filter(models.CalcRun.status == "success")
+
+    runs = query.all()
+    if not runs:
+        raise HTTPException(status_code=404, detail="No calc runs found for provided ids")
+
+    run_map = {run.id: run for run in runs}
+    ordered_runs = [run_map[run_id] for run_id in run_ids if run_id in run_map]
+    items: list[CalcRunComparisonItem] = []
+    for run in ordered_runs:
+        input_model = CalcInput.model_validate(run.input_json)
+        result_model = CalcResultSummary.model_validate(run.result_json) if run.result_json is not None else None
+        items.append(
+            CalcRunComparisonItem(
+                id=run.id,
+                scenario_id=run.scenario_id,
+                status=run.status,
+                started_at=run.started_at,
+                finished_at=run.finished_at,
+                input=input_model,
+                result=result_model,
+            )
+        )
+
+    return CalcRunCompareResponse(items=items, total=len(items))
