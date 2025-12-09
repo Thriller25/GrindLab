@@ -10,13 +10,19 @@ from app.schemas import (
     CalcRunRead,
     CalcScenarioListItem,
     CalcScenarioRead,
+    CalcComparisonRead,
+    CommentRead,
+    FlowsheetRead,
     FlowsheetVersionCloneRequest,
     FlowsheetVersionCloneResponse,
     FlowsheetVersionCreate,
+    FlowsheetVersionExportBundle,
     FlowsheetVersionOverviewResponse,
     FlowsheetVersionRead,
     FlowsheetVersionUpdate,
+    PlantRead,
     ScenarioWithLatestRun,
+    UnitRead,
 )
 from app.services.calc_service import get_flowsheet_version_or_404
 
@@ -148,4 +154,58 @@ def get_flowsheet_version_overview(
     return FlowsheetVersionOverviewResponse(
         flowsheet_version=FlowsheetVersionRead.model_validate(flowsheet_version, from_attributes=True),
         scenarios=scenario_items,
+    )
+
+
+@router.get("/{version_id}/export", response_model=FlowsheetVersionExportBundle)
+def export_flowsheet_version_bundle(version_id: uuid.UUID, db: Session = Depends(get_db)) -> FlowsheetVersionExportBundle:
+    flowsheet_version = get_flowsheet_version_or_404(db, version_id)
+    flowsheet = db.get(models.Flowsheet, flowsheet_version.flowsheet_id)
+    plant = db.get(models.Plant, flowsheet.plant_id) if flowsheet else None
+
+    if plant is None or flowsheet is None:
+        raise HTTPException(status_code=404, detail="Related Plant or Flowsheet not found")
+
+    units = db.query(models.Unit).filter(models.Unit.flowsheet_version_id == version_id).all()
+    scenarios = (
+        db.query(models.CalcScenario)
+        .filter(models.CalcScenario.flowsheet_version_id == version_id)
+        .order_by(models.CalcScenario.created_at.desc())
+        .all()
+    )
+    runs = (
+        db.query(models.CalcRun)
+        .filter(models.CalcRun.flowsheet_version_id == version_id)
+        .order_by(models.CalcRun.started_at.desc().nullslast())
+        .all()
+    )
+    comparisons = (
+        db.query(models.CalcComparison)
+        .filter(models.CalcComparison.flowsheet_version_id == version_id)
+        .order_by(models.CalcComparison.created_at.desc())
+        .all()
+    )
+    scenario_ids = [scenario.id for scenario in scenarios]
+    run_ids = [run.id for run in runs]
+    comments = (
+        db.query(models.Comment)
+        .filter(
+            (
+                (models.Comment.entity_type == "scenario") & (models.Comment.entity_id.in_(scenario_ids))
+            )
+            | ((models.Comment.entity_type == "calc_run") & (models.Comment.entity_id.in_(run_ids)))
+        )
+        .order_by(models.Comment.created_at.desc())
+        .all()
+    )
+
+    return FlowsheetVersionExportBundle(
+        plant=PlantRead.model_validate(plant, from_attributes=True),
+        flowsheet=FlowsheetRead.model_validate(flowsheet, from_attributes=True),
+        flowsheet_version=FlowsheetVersionRead.model_validate(flowsheet_version, from_attributes=True),
+        units=[UnitRead.model_validate(unit, from_attributes=True) for unit in units],
+        scenarios=[CalcScenarioRead.model_validate(s, from_attributes=True) for s in scenarios],
+        runs=[CalcRunRead.model_validate(r, from_attributes=True) for r in runs],
+        comparisons=[CalcComparisonRead.model_validate(c, from_attributes=True) for c in comparisons],
+        comments=[CommentRead.model_validate(c, from_attributes=True) for c in comments],
     )

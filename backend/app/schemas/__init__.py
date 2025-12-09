@@ -8,6 +8,7 @@ from .flowsheet_version import (
     FlowsheetVersionCloneResponse,
 )
 from .flowsheet_overview import FlowsheetVersionOverviewResponse, ScenarioWithLatestRun
+from .flowsheet_export import FlowsheetVersionExportBundle
 from .unit import UnitCreate, UnitRead, UnitUpdate
 from .calc_run import (
     CalcRunRead,
@@ -48,6 +49,7 @@ __all__ = [
     "FlowsheetVersionCloneRequest",
     "FlowsheetVersionCloneResponse",
     "FlowsheetVersionOverviewResponse",
+    "FlowsheetVersionExportBundle",
     "ScenarioWithLatestRun",
     "UnitCreate",
     "UnitRead",
