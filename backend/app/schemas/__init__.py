@@ -4,6 +4,8 @@ from .flowsheet_version import (
     FlowsheetVersionCreate,
     FlowsheetVersionRead,
     FlowsheetVersionUpdate,
+    FlowsheetVersionCloneRequest,
+    FlowsheetVersionCloneResponse,
 )
 from .flowsheet_overview import FlowsheetVersionOverviewResponse, ScenarioWithLatestRun
 from .unit import UnitCreate, UnitRead, UnitUpdate
@@ -27,6 +29,8 @@ __all__ = [
     "FlowsheetVersionCreate",
     "FlowsheetVersionRead",
     "FlowsheetVersionUpdate",
+    "FlowsheetVersionCloneRequest",
+    "FlowsheetVersionCloneResponse",
     "FlowsheetVersionOverviewResponse",
     "ScenarioWithLatestRun",
     "UnitCreate",

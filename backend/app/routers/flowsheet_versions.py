@@ -7,13 +7,16 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app import models
 from app.schemas import (
-    FlowsheetVersionCreate,
-    FlowsheetVersionRead,
-    FlowsheetVersionUpdate,
-    FlowsheetVersionOverviewResponse,
-    ScenarioWithLatestRun,
     CalcRunRead,
     CalcScenarioListItem,
+    CalcScenarioRead,
+    FlowsheetVersionCloneRequest,
+    FlowsheetVersionCloneResponse,
+    FlowsheetVersionCreate,
+    FlowsheetVersionOverviewResponse,
+    FlowsheetVersionRead,
+    FlowsheetVersionUpdate,
+    ScenarioWithLatestRun,
 )
 from app.services.calc_service import get_flowsheet_version_or_404
 
@@ -62,6 +65,53 @@ def delete_flowsheet_version(version_id: uuid.UUID, db: Session = Depends(get_db
     obj.is_active = False
     db.commit()
     return None
+
+
+@router.post("/{version_id}/clone", response_model=FlowsheetVersionCloneResponse, status_code=status.HTTP_201_CREATED)
+def clone_flowsheet_version(
+    version_id: uuid.UUID,
+    payload: FlowsheetVersionCloneRequest,
+    db: Session = Depends(get_db),
+) -> FlowsheetVersionCloneResponse:
+    source_version = get_flowsheet_version_or_404(db, version_id)
+    new_label = payload.new_version_name or f"{source_version.version_label} (copy)"
+
+    cloned_version = models.FlowsheetVersion(
+        flowsheet_id=source_version.flowsheet_id,
+        version_label=new_label,
+        status=source_version.status,
+        is_active=source_version.is_active,
+        comment=source_version.comment,
+        created_by=source_version.created_by,
+    )
+    db.add(cloned_version)
+    db.commit()
+    db.refresh(cloned_version)
+
+    cloned_scenarios: list[CalcScenarioRead] = []
+    if payload.clone_scenarios:
+        source_scenarios = (
+            db.query(models.CalcScenario)
+            .filter(models.CalcScenario.flowsheet_version_id == version_id)
+            .all()
+        )
+        for scenario in source_scenarios:
+            cloned = models.CalcScenario(
+                flowsheet_version_id=cloned_version.id,
+                name=scenario.name,
+                description=scenario.description,
+                default_input_json=scenario.default_input_json,
+            )
+            db.add(cloned)
+            cloned_scenarios.append(cloned)
+        db.commit()
+        for scenario in cloned_scenarios:
+            db.refresh(scenario)
+
+    return FlowsheetVersionCloneResponse(
+        flowsheet_version=FlowsheetVersionRead.model_validate(cloned_version, from_attributes=True),
+        scenarios=[CalcScenarioRead.model_validate(s, from_attributes=True) for s in cloned_scenarios],
+    )
 
 
 @router.get("/{version_id}/overview", response_model=FlowsheetVersionOverviewResponse)

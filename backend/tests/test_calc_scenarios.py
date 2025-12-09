@@ -178,3 +178,92 @@ def test_flowsheet_version_overview_with_scenarios_and_latest_runs(client: TestC
     assert scenario_map[scenario_id_2]["scenario"]["flowsheet_version_id"] == flowsheet_version_id
     assert scenario_map[scenario_id_2]["latest_run"]["id"] == scenario_2_run_id
     assert scenario_map[scenario_id_2]["latest_run"]["scenario_id"] == scenario_id_2
+
+
+def test_clone_flowsheet_version_with_scenarios(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    original_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    scenario_payloads = [
+        {
+            "flowsheet_version_id": original_version_id,
+            "name": "Original Scenario 1",
+            "default_input_json": {"feed_tph": 111, "target_p80_microns": 150},
+        },
+        {
+            "flowsheet_version_id": original_version_id,
+            "name": "Original Scenario 2",
+            "default_input_json": {"feed_tph": 222, "target_p80_microns": 175},
+        },
+    ]
+    original_scenario_ids = []
+    for payload in scenario_payloads:
+        resp = client.post("/api/calc-scenarios", json=payload)
+        assert resp.status_code == 201
+        original_scenario_ids.append(resp.json()["id"])
+
+    # Add calc runs to source version to ensure they are not copied
+    resp_run_1 = client.post(f"/api/calc/flowsheet-run/by-scenario/{original_scenario_ids[0]}")
+    assert resp_run_1.status_code in (200, 201)
+    resp_run_2 = client.post(f"/api/calc/flowsheet-run/by-scenario/{original_scenario_ids[0]}")
+    assert resp_run_2.status_code in (200, 201)
+
+    clone_payload = {"new_version_name": "Cloned version 1", "clone_scenarios": True}
+    clone_resp = client.post(f"/api/flowsheet-versions/{original_version_id}/clone", json=clone_payload)
+    assert clone_resp.status_code == 201
+    clone_body = clone_resp.json()
+
+    cloned_version = clone_body["flowsheet_version"]
+    cloned_scenarios = clone_body["scenarios"]
+
+    assert cloned_version["id"] != original_version_id
+    assert cloned_version["flowsheet_id"] == flowsheet_id
+    assert cloned_version["version_label"] == clone_payload["new_version_name"]
+    assert len(cloned_scenarios) == len(scenario_payloads)
+
+    cloned_by_name = {s["name"]: s for s in cloned_scenarios}
+    for payload in scenario_payloads:
+        scenario = cloned_by_name[payload["name"]]
+        assert scenario["flowsheet_version_id"] == cloned_version["id"]
+        assert scenario["default_input_json"]["feed_tph"] == payload["default_input_json"]["feed_tph"]
+        assert scenario["default_input_json"]["target_p80_microns"] == payload["default_input_json"]["target_p80_microns"]
+
+    scenarios_list_resp = client.get(f"/api/calc-scenarios/by-flowsheet-version/{cloned_version['id']}")
+    assert scenarios_list_resp.status_code == 200
+    scenarios_list_body = scenarios_list_resp.json()
+    assert scenarios_list_body["total"] == len(scenario_payloads)
+
+    runs_list_resp = client.get(f"/api/calc-runs/by-flowsheet-version/{cloned_version['id']}")
+    assert runs_list_resp.status_code == 200
+    runs_list_body = runs_list_resp.json()
+    assert runs_list_body["total"] == 0
+    assert runs_list_body["items"] == []
+
+
+def test_clone_flowsheet_version_without_scenarios(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    original_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    payload = {"flowsheet_version_id": original_version_id, "name": "Scenario to skip", "default_input_json": {"feed_tph": 300, "target_p80_microns": 190}}
+    resp = client.post("/api/calc-scenarios", json=payload)
+    assert resp.status_code == 201
+
+    clone_payload = {"new_version_name": "Cloned no scenarios", "clone_scenarios": False}
+    clone_resp = client.post(f"/api/flowsheet-versions/{original_version_id}/clone", json=clone_payload)
+    assert clone_resp.status_code == 201
+    clone_body = clone_resp.json()
+
+    cloned_version = clone_body["flowsheet_version"]
+    cloned_scenarios = clone_body["scenarios"]
+
+    assert cloned_version["id"] != original_version_id
+    assert cloned_version["flowsheet_id"] == flowsheet_id
+    assert cloned_version["version_label"] == clone_payload["new_version_name"]
+    assert cloned_scenarios == []
+
+    scenarios_list_resp = client.get(f"/api/calc-scenarios/by-flowsheet-version/{cloned_version['id']}")
+    assert scenarios_list_resp.status_code == 200
+    scenarios_list_body = scenarios_list_resp.json()
+    assert scenarios_list_body["total"] == 0
