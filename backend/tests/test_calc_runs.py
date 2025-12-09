@@ -1,6 +1,7 @@
-﻿import uuid
+import uuid
 
 from fastapi.testclient import TestClient
+from pytest import approx
 
 from .utils import create_flowsheet, create_flowsheet_version, create_plant
 
@@ -63,7 +64,6 @@ def test_calc_run_invalid_input_json(client: TestClient):
     body = resp.json()
     assert "detail" in body
     assert isinstance(body["detail"], list)
-
 
 
 def test_get_calc_runs_list(client: TestClient):
@@ -149,3 +149,75 @@ def test_compare_calc_runs_not_found(client: TestClient):
     )
     assert compare_resp.status_code == 404
     assert "No calc runs found" in compare_resp.json()["detail"]
+
+
+def test_compare_with_baseline(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    baseline_resp = client.post(
+        "/api/calc/flowsheet-run",
+        json={
+            "flowsheet_version_id": flowsheet_version_id,
+            "scenario_name": "Baseline",
+            "input_json": {"feed_tph": 100, "target_p80_microns": 150},
+        },
+    )
+    assert baseline_resp.status_code in (200, 201)
+    baseline_body = baseline_resp.json()
+    baseline_id = baseline_body["id"]
+    baseline_result = baseline_body["result_json"]
+
+    compare_runs = [
+        {"feed_tph": 120, "target_p80_microns": 140},
+        {"feed_tph": 80, "target_p80_microns": 160},
+    ]
+    run_ids = []
+    run_results = []
+    for payload in compare_runs:
+        resp = client.post(
+            "/api/calc/flowsheet-run",
+            json={
+                "flowsheet_version_id": flowsheet_version_id,
+                "scenario_name": "Compare",
+                "input_json": payload,
+            },
+        )
+        assert resp.status_code in (200, 201)
+        body = resp.json()
+        run_ids.append(body["id"])
+        run_results.append(body["result_json"])
+
+    resp = client.get(
+        "/api/calc-runs/compare-with-baseline",
+        params=[("baseline_run_id", baseline_id)] + [("run_ids", rid) for rid in run_ids],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["baseline"]["id"] == baseline_id
+    assert body["total"] == len(run_ids)
+    assert len(body["items"]) == len(run_ids)
+
+    item_map = {item["run"]["id"]: item for item in body["items"]}
+    for rid, run_result in zip(run_ids, run_results):
+        item = item_map[rid]
+        deltas = item["deltas"]
+        expected_throughput_delta = run_result["throughput_tph"] - baseline_result["throughput_tph"]
+        expected_p80_delta = run_result["p80_out_microns"] - baseline_result["p80_out_microns"]
+        assert deltas["throughput_delta_abs"] == approx(expected_throughput_delta)
+        assert deltas["p80_out_delta_abs"] == approx(expected_p80_delta)
+        assert deltas["throughput_delta_pct"] == approx(
+            expected_throughput_delta / baseline_result["throughput_tph"] * 100.0
+        )
+        assert deltas["p80_out_delta_pct"] == approx(
+            expected_p80_delta / baseline_result["p80_out_microns"] * 100.0
+        )
+
+
+def test_compare_with_baseline_invalid_ids(client: TestClient):
+    resp = client.get(
+        "/api/calc-runs/compare-with-baseline",
+        params=[("baseline_run_id", str(uuid.uuid4())), ("run_ids", str(uuid.uuid4()))],
+    )
+    assert resp.status_code == 404

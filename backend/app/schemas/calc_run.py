@@ -67,3 +67,23 @@ class CalcRunComparisonItem(BaseModel):
 class CalcRunCompareResponse(BaseModel):
     items: list[CalcRunComparisonItem]
     total: int
+
+
+class CalcRunDelta(BaseModel):
+    throughput_delta_abs: Optional[float] = None
+    throughput_delta_pct: Optional[float] = None
+    specific_energy_delta_abs: Optional[float] = None
+    specific_energy_delta_pct: Optional[float] = None
+    p80_out_delta_abs: Optional[float] = None
+    p80_out_delta_pct: Optional[float] = None
+
+
+class CalcRunCompareWithBaselineItem(BaseModel):
+    run: CalcRunComparisonItem
+    deltas: CalcRunDelta
+
+
+class CalcRunCompareWithBaselineResponse(BaseModel):
+    baseline: CalcRunComparisonItem
+    items: list[CalcRunCompareWithBaselineItem]
+    total: int
