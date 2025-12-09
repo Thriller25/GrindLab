@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi.testclient import TestClient
 
 from .utils import create_flowsheet, create_flowsheet_version, create_plant
@@ -82,3 +84,43 @@ def test_calc_run_by_scenario_happy_path(client: TestClient):
     assert list_body["total"] == 1
     assert len(list_body["items"]) == 1
     assert list_body["items"][0]["scenario_id"] == scenario_id
+
+
+def test_get_latest_calc_run_by_scenario(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    scenario_payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "name": "Baseline scenario",
+        "default_input_json": {"feed_tph": 120, "target_p80_microns": 140},
+    }
+    resp = client.post("/api/calc-scenarios", json=scenario_payload)
+    assert resp.status_code == 201
+    scenario_id = resp.json()["id"]
+
+    first_resp = client.post(f"/api/calc/flowsheet-run/by-scenario/{scenario_id}")
+    assert first_resp.status_code in (200, 201)
+
+    second_resp = client.post(f"/api/calc/flowsheet-run/by-scenario/{scenario_id}")
+    assert second_resp.status_code in (200, 201)
+    latest_run_id = second_resp.json()["id"]
+
+    latest_resp = client.get(f"/api/calc-runs/latest/by-scenario/{scenario_id}")
+    assert latest_resp.status_code == 200
+    latest_body = latest_resp.json()
+    assert latest_body["scenario_id"] == scenario_id
+    assert latest_body["id"] == latest_run_id
+
+    latest_success_resp = client.get(
+        f"/api/calc-runs/latest/by-scenario/{scenario_id}", params={"status": "success"}
+    )
+    assert latest_success_resp.status_code == 200
+    assert latest_success_resp.json()["id"] == latest_run_id
+
+
+def test_get_latest_calc_run_by_scenario_not_found(client: TestClient):
+    random_scenario_id = uuid.uuid4()
+    resp = client.get(f"/api/calc-runs/latest/by-scenario/{random_scenario_id}")
+    assert resp.status_code == 404

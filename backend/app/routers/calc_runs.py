@@ -2,14 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db
-from app.schemas.calc_run import CalcRunListItem, CalcRunListResponse
-from app.services.calc_service import get_flowsheet_version_or_404
+from app.schemas.calc_run import CalcRunListItem, CalcRunListResponse, CalcRunRead
+from app.services.calc_service import get_calc_scenario_or_404, get_flowsheet_version_or_404
 
 router = APIRouter(prefix="/api/calc-runs", tags=["calc-runs"])
 
@@ -53,3 +53,25 @@ def list_calc_runs(
 
     items = [CalcRunListItem.model_validate(run, from_attributes=True) for run in runs]
     return CalcRunListResponse(items=items, total=total)
+
+
+@router.get(
+    "/latest/by-scenario/{scenario_id}",
+    response_model=CalcRunRead,
+)
+def get_latest_calc_run_by_scenario(
+    scenario_id: uuid.UUID,
+    status: Optional[str] = Query("success", description="Optional status filter, default 'success'"),
+    db: Session = Depends(get_db),
+) -> CalcRunRead:
+    get_calc_scenario_or_404(db, scenario_id)
+
+    query = db.query(models.CalcRun).filter(models.CalcRun.scenario_id == scenario_id)
+    if status is not None:
+        query = query.filter(models.CalcRun.status == status)
+
+    calc_run = query.order_by(models.CalcRun.started_at.desc().nullslast()).limit(1).first()
+    if calc_run is None:
+        raise HTTPException(status_code=404, detail=f"No calc runs found for scenario {scenario_id}")
+
+    return CalcRunRead.model_validate(calc_run, from_attributes=True)
