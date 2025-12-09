@@ -7,6 +7,7 @@ from .units import router as units_router
 from . import calc
 from . import calc_runs
 from . import calc_scenarios
+from . import calc_comparisons
 
 api_router = APIRouter()
 api_router.include_router(plants_router, prefix="/plants", tags=["plants"])
@@ -23,4 +24,5 @@ __all__ = [
     "calc",
     "calc_runs",
     "calc_scenarios",
+    "calc_comparisons",
 ]

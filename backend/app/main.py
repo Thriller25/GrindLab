@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.db import Base, engine
-from app.routers import api_router, calc, calc_runs, calc_scenarios
+from app.routers import api_router, calc, calc_runs, calc_scenarios, calc_comparisons
 
 
 app = FastAPI(title="GrindLab Backend", version="0.1.0")
@@ -26,3 +26,4 @@ app.include_router(api_router, prefix="/api")
 app.include_router(calc.router)
 app.include_router(calc_runs.router)
 app.include_router(calc_scenarios.router)
+app.include_router(calc_comparisons.router)

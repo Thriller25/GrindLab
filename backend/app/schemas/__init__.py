@@ -10,6 +10,14 @@ from .flowsheet_version import (
 from .flowsheet_overview import FlowsheetVersionOverviewResponse, ScenarioWithLatestRun
 from .unit import UnitCreate, UnitRead, UnitUpdate
 from .calc_run import CalcRunRead, CalcRunComparisonItem, CalcRunCompareResponse
+from .calc_comparison import (
+    CalcComparisonBase,
+    CalcComparisonCreate,
+    CalcComparisonRead,
+    CalcComparisonListItem,
+    CalcComparisonListResponse,
+    CalcComparisonDetailResponse,
+)
 from .calc_scenario import (
     CalcScenarioBase,
     CalcScenarioCreate,
@@ -39,6 +47,12 @@ __all__ = [
     "CalcRunRead",
     "CalcRunComparisonItem",
     "CalcRunCompareResponse",
+    "CalcComparisonBase",
+    "CalcComparisonCreate",
+    "CalcComparisonRead",
+    "CalcComparisonListItem",
+    "CalcComparisonListResponse",
+    "CalcComparisonDetailResponse",
     "CalcScenarioBase",
     "CalcScenarioCreate",
     "CalcScenarioUpdate",

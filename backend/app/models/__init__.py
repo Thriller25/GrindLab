@@ -4,5 +4,6 @@ from .flowsheet_version import FlowsheetVersion
 from .unit import Unit
 from .calc_run import CalcRun
 from .calc_scenario import CalcScenario
+from .calc_comparison import CalcComparison
 
-__all__ = ["Plant", "Flowsheet", "FlowsheetVersion", "Unit", "CalcRun", "CalcScenario"]
+__all__ = ["Plant", "Flowsheet", "FlowsheetVersion", "Unit", "CalcRun", "CalcScenario", "CalcComparison"]
