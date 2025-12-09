@@ -101,6 +101,7 @@ def clone_flowsheet_version(
                 name=scenario.name,
                 description=scenario.description,
                 default_input_json=scenario.default_input_json,
+                is_baseline=scenario.is_baseline,
             )
             db.add(cloned)
             cloned_scenarios.append(cloned)

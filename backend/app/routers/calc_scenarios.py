@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
@@ -13,9 +14,28 @@ from app.schemas.calc_scenario import (
     CalcScenarioRead,
     CalcScenarioUpdate,
 )
-from app.services.calc_service import CalculationError, get_flowsheet_version_or_404, validate_input_json
+from app.services.calc_service import (
+    CalculationError,
+    get_calc_scenario_or_404,
+    get_flowsheet_version_or_404,
+    validate_input_json,
+)
 
 router = APIRouter(prefix="/api/calc-scenarios", tags=["calc-scenarios"])
+
+
+def _clear_baseline_for_version(db: Session, flowsheet_version_id: uuid.UUID, exclude_id: Optional[uuid.UUID] = None):
+    query = db.query(models.CalcScenario).filter(models.CalcScenario.flowsheet_version_id == flowsheet_version_id)
+    if exclude_id:
+        query = query.filter(models.CalcScenario.id != exclude_id)
+    query.update({models.CalcScenario.is_baseline: False}, synchronize_session=False)
+
+
+def _apply_baseline(db: Session, scenario: models.CalcScenario, is_baseline: bool) -> None:
+    if is_baseline:
+        _clear_baseline_for_version(db, scenario.flowsheet_version_id, exclude_id=scenario.id)
+    scenario.is_baseline = is_baseline
+    db.add(scenario)
 
 
 @router.post("/", response_model=CalcScenarioRead, status_code=status.HTTP_201_CREATED)
@@ -31,8 +51,12 @@ def create_calc_scenario(payload: CalcScenarioCreate, db: Session = Depends(get_
         name=payload.name,
         description=payload.description,
         default_input_json=validated_input.model_dump(),
+        is_baseline=payload.is_baseline,
     )
     db.add(scenario)
+    if payload.is_baseline:
+        _clear_baseline_for_version(db, payload.flowsheet_version_id)
+        scenario.is_baseline = True
     db.commit()
     db.refresh(scenario)
     return scenario
@@ -82,10 +106,32 @@ def update_calc_scenario(
         scenario.default_input_json = validated_input.model_dump()
         update_data.pop("default_input_json")
 
+    baseline_value = update_data.pop("is_baseline", None)
+
     for field, value in update_data.items():
         setattr(scenario, field, value)
 
+    if baseline_value is not None:
+        _apply_baseline(db, scenario, baseline_value)
     db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+@router.post("/{scenario_id}/set-baseline", response_model=CalcScenarioRead)
+def set_baseline_scenario(scenario_id: uuid.UUID, db: Session = Depends(get_db)) -> CalcScenarioRead:
+    scenario = get_calc_scenario_or_404(db, scenario_id)
+    _apply_baseline(db, scenario, True)
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+
+@router.post("/{scenario_id}/unset-baseline", response_model=CalcScenarioRead)
+def unset_baseline_scenario(scenario_id: uuid.UUID, db: Session = Depends(get_db)) -> CalcScenarioRead:
+    scenario = get_calc_scenario_or_404(db, scenario_id)
+    _apply_baseline(db, scenario, False)
     db.commit()
     db.refresh(scenario)
     return scenario

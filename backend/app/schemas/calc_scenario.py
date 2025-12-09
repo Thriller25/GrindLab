@@ -11,6 +11,7 @@ class CalcScenarioBase(BaseModel):
     name: str
     description: Optional[str] = None
     default_input_json: CalcInput
+    is_baseline: bool = False
 
 
 class CalcScenarioCreate(CalcScenarioBase):
@@ -21,6 +22,7 @@ class CalcScenarioUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     default_input_json: Optional[CalcInput] = None
+    is_baseline: Optional[bool] = None
 
 
 class CalcScenarioRead(CalcScenarioBase):
@@ -36,6 +38,7 @@ class CalcScenarioListItem(BaseModel):
     id: UUID
     name: str
     flowsheet_version_id: UUID
+    is_baseline: bool = False
 
     model_config = {"from_attributes": True}
 

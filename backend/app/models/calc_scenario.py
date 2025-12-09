@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, JSON, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -15,6 +15,7 @@ class CalcScenario(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     default_input_json = Column(JSON, nullable=False)
+    is_baseline = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
