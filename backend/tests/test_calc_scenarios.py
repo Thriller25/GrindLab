@@ -124,3 +124,57 @@ def test_get_latest_calc_run_by_scenario_not_found(client: TestClient):
     random_scenario_id = uuid.uuid4()
     resp = client.get(f"/api/calc-runs/latest/by-scenario/{random_scenario_id}")
     assert resp.status_code == 404
+
+
+def test_flowsheet_version_overview_with_scenarios_and_latest_runs(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    scenario_payloads = [
+        {
+            "flowsheet_version_id": flowsheet_version_id,
+            "name": "Scenario A",
+            "default_input_json": {"feed_tph": 100, "target_p80_microns": 130},
+        },
+        {
+            "flowsheet_version_id": flowsheet_version_id,
+            "name": "Scenario B",
+            "default_input_json": {"feed_tph": 200, "target_p80_microns": 160},
+        },
+    ]
+    scenario_ids = []
+    for payload in scenario_payloads:
+        resp = client.post("/api/calc-scenarios", json=payload)
+        assert resp.status_code == 201
+        scenario_ids.append(resp.json()["id"])
+
+    scenario_id_1, scenario_id_2 = scenario_ids
+
+    first_run_resp = client.post(f"/api/calc/flowsheet-run/by-scenario/{scenario_id_1}")
+    assert first_run_resp.status_code in (200, 201)
+    second_run_resp = client.post(f"/api/calc/flowsheet-run/by-scenario/{scenario_id_1}")
+    assert second_run_resp.status_code in (200, 201)
+    latest_run_scenario_1_id = second_run_resp.json()["id"]
+
+    scenario_2_run_resp = client.post(f"/api/calc/flowsheet-run/by-scenario/{scenario_id_2}")
+    assert scenario_2_run_resp.status_code in (200, 201)
+    scenario_2_run_id = scenario_2_run_resp.json()["id"]
+
+    overview_resp = client.get(f"/api/flowsheet-versions/{flowsheet_version_id}/overview")
+    assert overview_resp.status_code == 200
+    overview_body = overview_resp.json()
+
+    assert overview_body["flowsheet_version"]["id"] == flowsheet_version_id
+    assert len(overview_body["scenarios"]) == 2
+
+    scenario_map = {item["scenario"]["id"]: item for item in overview_body["scenarios"]}
+    assert set(scenario_map.keys()) == set(scenario_ids)
+
+    assert scenario_map[scenario_id_1]["scenario"]["flowsheet_version_id"] == flowsheet_version_id
+    assert scenario_map[scenario_id_1]["latest_run"]["id"] == latest_run_scenario_1_id
+    assert scenario_map[scenario_id_1]["latest_run"]["scenario_id"] == scenario_id_1
+
+    assert scenario_map[scenario_id_2]["scenario"]["flowsheet_version_id"] == flowsheet_version_id
+    assert scenario_map[scenario_id_2]["latest_run"]["id"] == scenario_2_run_id
+    assert scenario_map[scenario_id_2]["latest_run"]["scenario_id"] == scenario_id_2

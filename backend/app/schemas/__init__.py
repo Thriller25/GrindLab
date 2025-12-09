@@ -5,6 +5,7 @@ from .flowsheet_version import (
     FlowsheetVersionRead,
     FlowsheetVersionUpdate,
 )
+from .flowsheet_overview import FlowsheetVersionOverviewResponse, ScenarioWithLatestRun
 from .unit import UnitCreate, UnitRead, UnitUpdate
 from .calc_run import CalcRunRead
 from .calc_scenario import (
@@ -26,6 +27,8 @@ __all__ = [
     "FlowsheetVersionCreate",
     "FlowsheetVersionRead",
     "FlowsheetVersionUpdate",
+    "FlowsheetVersionOverviewResponse",
+    "ScenarioWithLatestRun",
     "UnitCreate",
     "UnitRead",
     "UnitUpdate",
