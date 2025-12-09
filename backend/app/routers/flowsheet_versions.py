@@ -25,6 +25,8 @@ from app.schemas import (
     UnitRead,
 )
 from app.services.calc_service import get_flowsheet_version_or_404
+from app.schemas.flowsheet_kpi import FlowsheetVersionKpiSummaryResponse, KpiAggregate, ScenarioKpiSummary
+from app.schemas.calc_io import CalcResultSummary
 
 router = APIRouter()
 
@@ -208,4 +210,97 @@ def export_flowsheet_version_bundle(version_id: uuid.UUID, db: Session = Depends
         runs=[CalcRunRead.model_validate(r, from_attributes=True) for r in runs],
         comparisons=[CalcComparisonRead.model_validate(c, from_attributes=True) for c in comparisons],
         comments=[CommentRead.model_validate(c, from_attributes=True) for c in comments],
+    )
+
+
+def _aggregate_kpis(runs: list[models.CalcRun]) -> KpiAggregate:
+    summaries = []
+    for run in runs:
+        if run.result_json is None:
+            continue
+        try:
+            summary = CalcResultSummary.model_validate(run.result_json)
+            summaries.append(summary)
+        except Exception:
+            continue
+
+    if not summaries:
+        return KpiAggregate(count_runs=0)
+
+    def _values(attr: str) -> list[float]:
+        vals = []
+        for summary in summaries:
+            value = getattr(summary, attr)
+            if value is not None:
+                vals.append(value)
+        return vals
+
+    throughput_values = _values("throughput_tph")
+    energy_values = _values("specific_energy_kwh_per_t")
+    p80_values = _values("p80_out_microns")
+
+    def _avg(values: list[float]) -> Optional[float]:
+        return sum(values) / len(values) if values else None
+
+    return KpiAggregate(
+        count_runs=len(summaries),
+        throughput_tph_min=min(throughput_values) if throughput_values else None,
+        throughput_tph_max=max(throughput_values) if throughput_values else None,
+        throughput_tph_avg=_avg(throughput_values),
+        specific_energy_kwh_per_t_min=min(energy_values) if energy_values else None,
+        specific_energy_kwh_per_t_max=max(energy_values) if energy_values else None,
+        specific_energy_kwh_per_t_avg=_avg(energy_values),
+        p80_out_microns_min=min(p80_values) if p80_values else None,
+        p80_out_microns_max=max(p80_values) if p80_values else None,
+        p80_out_microns_avg=_avg(p80_values),
+    )
+
+
+@router.get("/{version_id}/kpi-summary", response_model=FlowsheetVersionKpiSummaryResponse)
+def get_flowsheet_version_kpi_summary(
+    version_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> FlowsheetVersionKpiSummaryResponse:
+    flowsheet_version = get_flowsheet_version_or_404(db, version_id)
+
+    runs = (
+        db.query(models.CalcRun)
+        .filter(
+            models.CalcRun.flowsheet_version_id == version_id,
+            models.CalcRun.status == "success",
+        )
+        .all()
+    )
+
+    totals_kpi = _aggregate_kpis(runs)
+
+    scenarios = (
+        db.query(models.CalcScenario)
+        .filter(models.CalcScenario.flowsheet_version_id == version_id)
+        .all()
+    )
+    scenario_by_id = {s.id: s for s in scenarios}
+
+    scenario_runs_map: dict[uuid.UUID, list[models.CalcRun]] = {s.id: [] for s in scenarios}
+    for run in runs:
+        if run.scenario_id and run.scenario_id in scenario_runs_map:
+            scenario_runs_map[run.scenario_id].append(run)
+
+    by_scenario: list[ScenarioKpiSummary] = []
+    for scenario_id, scenario_runs in scenario_runs_map.items():
+        scenario = scenario_by_id[scenario_id]
+        kpi = _aggregate_kpis(scenario_runs)
+        by_scenario.append(
+            ScenarioKpiSummary(
+                scenario_id=scenario.id,
+                scenario_name=scenario.name,
+                is_baseline=scenario.is_baseline,
+                kpi=kpi,
+            )
+        )
+
+    return FlowsheetVersionKpiSummaryResponse(
+        flowsheet_version_id=flowsheet_version.id,
+        totals=totals_kpi,
+        by_scenario=by_scenario,
     )

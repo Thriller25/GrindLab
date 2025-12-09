@@ -9,6 +9,7 @@ from .flowsheet_version import (
 )
 from .flowsheet_overview import FlowsheetVersionOverviewResponse, ScenarioWithLatestRun
 from .flowsheet_export import FlowsheetVersionExportBundle
+from .flowsheet_kpi import KpiAggregate, ScenarioKpiSummary, FlowsheetVersionKpiSummaryResponse
 from .unit import UnitCreate, UnitRead, UnitUpdate
 from .calc_run import (
     CalcRunRead,
@@ -50,6 +51,9 @@ __all__ = [
     "FlowsheetVersionCloneResponse",
     "FlowsheetVersionOverviewResponse",
     "FlowsheetVersionExportBundle",
+    "KpiAggregate",
+    "ScenarioKpiSummary",
+    "FlowsheetVersionKpiSummaryResponse",
     "ScenarioWithLatestRun",
     "UnitCreate",
     "UnitRead",
