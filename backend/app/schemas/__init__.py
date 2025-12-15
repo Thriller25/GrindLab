@@ -13,13 +13,25 @@ from .flowsheet_kpi import KpiAggregate, ScenarioKpiSummary, FlowsheetVersionKpi
 from .unit import UnitCreate, UnitRead, UnitUpdate
 from .calc_run import (
     CalcRunRead,
+    CalcRunListItem,
     CalcRunComparisonItem,
     CalcRunCompareResponse,
     CalcRunDelta,
     CalcRunCompareWithBaselineItem,
     CalcRunCompareWithBaselineResponse,
 )
-from .comment import CommentBase, CommentCreate, CommentRead, CommentListResponse
+from .comment import CommentBase, CommentCreate, CommentRead, CommentListResponse, UserCommentCreate
+from .user import (
+    UserBase,
+    UserCreate,
+    UserRead,
+    UserLogin,
+    Token,
+    UserActivitySummary,
+    ChangePasswordRequest,
+    UserFavoritesGrouped,
+    UserDashboardResponse,
+)
 from .calc_comparison import (
     CalcComparisonBase,
     CalcComparisonCreate,
@@ -36,6 +48,19 @@ from .calc_scenario import (
     CalcScenarioListItem,
     CalcScenarioListResponse,
 )
+from .project import (
+    ProjectBase,
+    ProjectCreate,
+    ProjectRead,
+    ProjectListItem,
+    ProjectListResponse,
+    ProjectDetail,
+    ProjectSummary,
+    ProjectMemberAddRequest,
+    ProjectMemberRead,
+    ProjectDashboardResponse,
+)
+from .favorite import FavoriteBase, FavoriteCreate, FavoriteRead
 
 __all__ = [
     "PlantCreate",
@@ -59,6 +84,7 @@ __all__ = [
     "UnitRead",
     "UnitUpdate",
     "CalcRunRead",
+    "CalcRunListItem",
     "CalcRunComparisonItem",
     "CalcRunCompareResponse",
     "CalcRunDelta",
@@ -68,6 +94,16 @@ __all__ = [
     "CommentCreate",
     "CommentRead",
     "CommentListResponse",
+    "UserCommentCreate",
+    "UserBase",
+    "UserCreate",
+    "UserRead",
+    "UserLogin",
+    "Token",
+    "UserActivitySummary",
+    "ChangePasswordRequest",
+    "UserFavoritesGrouped",
+    "UserDashboardResponse",
     "CalcComparisonBase",
     "CalcComparisonCreate",
     "CalcComparisonRead",
@@ -80,4 +116,21 @@ __all__ = [
     "CalcScenarioRead",
     "CalcScenarioListItem",
     "CalcScenarioListResponse",
+    "ProjectBase",
+    "ProjectCreate",
+    "ProjectRead",
+    "ProjectListItem",
+    "ProjectListResponse",
+    "ProjectDetail",
+    "ProjectSummary",
+    "ProjectMemberAddRequest",
+    "ProjectMemberRead",
+    "ProjectDashboardResponse",
+    "FavoriteBase",
+    "FavoriteCreate",
+    "FavoriteRead",
 ]
+
+# Resolve forward references
+UserDashboardResponse.model_rebuild()
+UserFavoritesGrouped.model_rebuild()

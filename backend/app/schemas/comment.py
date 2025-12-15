@@ -28,3 +28,7 @@ class CommentRead(CommentBase):
 class CommentListResponse(BaseModel):
     items: list[CommentRead]
     total: int
+
+
+class UserCommentCreate(BaseModel):
+    text: str

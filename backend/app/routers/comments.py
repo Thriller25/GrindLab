@@ -6,9 +6,11 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db
-from app.schemas import CommentBase, CommentCreate, CommentListResponse, CommentRead
+from app.schemas import CommentBase, CommentCreate, CommentListResponse, CommentRead, UserCommentCreate
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/comments", tags=["comments"])
+me_router = APIRouter(prefix="/api", tags=["comments"])
 
 
 def _validate_entity(db: Session, entity_type: str, entity_id: uuid.UUID) -> None:
@@ -98,3 +100,56 @@ def delete_comment(comment_id: uuid.UUID, db: Session = Depends(get_db)):
     db.delete(comment)
     db.commit()
     return None
+
+
+@me_router.post("/calc-runs/{run_id}/comments/me", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
+def create_comment_for_run_me(
+    run_id: uuid.UUID,
+    payload: UserCommentCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> CommentRead:
+    comment = _create_comment(
+        db,
+        "calc_run",
+        run_id,
+        CommentBase(author=current_user.email, text=payload.text),
+    )
+    return CommentRead.model_validate(comment, from_attributes=True)
+
+
+@me_router.post(
+    "/calc-scenarios/{scenario_id}/comments/me", response_model=CommentRead, status_code=status.HTTP_201_CREATED
+)
+def create_comment_for_scenario_me(
+    scenario_id: uuid.UUID,
+    payload: UserCommentCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> CommentRead:
+    comment = _create_comment(
+        db,
+        "scenario",
+        scenario_id,
+        CommentBase(author=current_user.email, text=payload.text),
+    )
+    return CommentRead.model_validate(comment, from_attributes=True)
+
+
+@me_router.get("/comments/me", response_model=CommentListResponse)
+def get_my_comments(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> CommentListResponse:
+    query = db.query(models.Comment).filter(models.Comment.author == current_user.email)
+    total = query.with_entities(func.count()).scalar() or 0
+    comments = (
+        query.order_by(models.Comment.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    items = [CommentRead.model_validate(comment, from_attributes=True) for comment in comments]
+    return CommentListResponse(items=items, total=total)
