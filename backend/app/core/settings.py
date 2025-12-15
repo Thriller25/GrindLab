@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Флаг тестового режима (можно переопределить переменной окружения TESTING=1)
     testing: bool = False
 
+    # Вкл/выкл обязательной авторизации (для локальной разработки по умолчанию выключено)
+    auth_enabled: bool = False
+
     # Настройки pydantic-settings (v2)
     model_config = SettingsConfigDict(
         env_file=".env",              # читаем переменные из .env

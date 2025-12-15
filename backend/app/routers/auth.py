@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from typing import List
 
 import jwt
@@ -8,12 +9,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
-from app.core.security import (
-    create_access_token,
-    decode_access_token,
-    hash_password,
-    verify_password,
-)
+from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
+from app.core.settings import settings
 from app.db import get_db
 from app.schemas import (
     CalcRunListItem,
@@ -33,10 +30,26 @@ from app.schemas import (
 from app.schemas.user import UserFavoritesGrouped
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+me_router = APIRouter(prefix="/api/me", tags=["me"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
 ANONYMOUS_EMAIL = "anonymous@grindlab.local"
 ANONYMOUS_ID = uuid.UUID(int=0)
+
+
+class AnonymousUser:
+    def __init__(self):
+        self.id = ANONYMOUS_ID
+        self.email = ANONYMOUS_EMAIL
+        self.full_name = "Anonymous"
+        self.hashed_password = ""
+        self.is_active = True
+        self.is_superuser = False
+        self.is_anonymous = True
+        self.created_at = datetime.now(timezone.utc)
+
+
+ANONYMOUS_USER = AnonymousUser()
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -78,9 +91,18 @@ def login_for_access_token(
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme_optional),
     db: Session = Depends(get_db),
 ) -> models.User:
+    if not settings.auth_enabled:
+        return ANONYMOUS_USER
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -102,30 +124,19 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    token: str = Depends(oauth2_scheme_optional),
+    token: str | None = Depends(oauth2_scheme_optional),
     db: Session = Depends(get_db),
 ) -> models.User | None:
+    if not settings.auth_enabled:
+        return ANONYMOUS_USER
+
     if not token:
-        return models.User(
-            id=ANONYMOUS_ID,
-            email=ANONYMOUS_EMAIL,
-            full_name="Anonymous",
-            hashed_password="",
-            is_active=True,
-            is_superuser=False,
-        )
+        return ANONYMOUS_USER
     try:
         return await get_current_user(token=token, db=db)
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED:
-            return models.User(
-                id=ANONYMOUS_ID,
-                email=ANONYMOUS_EMAIL,
-                full_name="Anonymous",
-                hashed_password="",
-                is_active=True,
-                is_superuser=False,
-            )
+            return ANONYMOUS_USER
         raise
 
 
@@ -135,6 +146,24 @@ async def read_users_me(current_user: models.User = Depends(get_current_user)) -
 
 
 def _calculate_user_summary(db: Session, current_user: models.User) -> UserActivitySummary:
+    if getattr(current_user, "is_anonymous", False):
+        anon_user = UserRead(
+            id=current_user.id,
+            email=current_user.email,
+            full_name=current_user.full_name,
+            is_active=True,
+            is_superuser=False,
+            created_at=current_user.created_at,
+        )
+        return UserActivitySummary(
+            user=anon_user,
+            scenarios_total=0,
+            calc_runs_total=0,
+            calc_runs_by_status={},
+            comments_total=0,
+            last_activity_at=None,
+        )
+
     if hasattr(models.CalcScenario, "created_by_user_id"):
         scenarios_total = (
             db.query(func.count(models.CalcScenario.id))
@@ -306,6 +335,26 @@ def get_me_dashboard(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> UserDashboardResponse:
+    if getattr(current_user, "is_anonymous", False):
+        anon_user = UserRead(
+            id=current_user.id,
+            email=current_user.email,
+            full_name=current_user.full_name,
+            is_active=True,
+            is_superuser=False,
+            created_at=current_user.created_at,
+        )
+        empty_summary = _calculate_user_summary(db, current_user)
+        return UserDashboardResponse(
+            user=anon_user,
+            summary=empty_summary,
+            projects=[],
+            member_projects=[],
+            recent_calc_runs=[],
+            recent_comments=[],
+            favorites=UserFavoritesGrouped(),
+        )
+
     summary = _calculate_user_summary(db, current_user)
 
     projects_owner = (
@@ -381,3 +430,12 @@ def get_me_dashboard(
         recent_comments=recent_comments_dto,
         favorites=favorites_grouped,
     )
+
+
+@me_router.get("/dashboard", response_model=UserDashboardResponse)
+def get_me_dashboard_public(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> UserDashboardResponse:
+    # Reuse the same logic but under the public /api/me prefix expected by the UI
+    return get_me_dashboard(db=db, current_user=current_user)
