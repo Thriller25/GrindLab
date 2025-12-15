@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.schemas.calc_io import CalcInput, CalcResultSummary
+from app.schemas.calc_result import CalcResult
 
 
 class CalcRunCreate(BaseModel):
@@ -26,7 +27,7 @@ class CalcRunRead(BaseModel):
     finished_at: Optional[datetime] = None
     error_message: Optional[str] = None
     input_json: Optional[CalcInput] = None
-    result_json: Optional[CalcResultSummary] = None
+    result_json: Optional[CalcResult] = None
     created_at: datetime
     updated_at: datetime
 
@@ -44,7 +45,7 @@ class CalcRunListItem(BaseModel):
     comment: Optional[str] = None
     error_message: Optional[str] = None
     input_json: Optional[CalcInput] = None
-    result_json: Optional[CalcResultSummary] = None
+    result_json: Optional[CalcResult] = None
 
     model_config = {"from_attributes": True}
 

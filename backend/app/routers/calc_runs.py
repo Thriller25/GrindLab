@@ -73,10 +73,10 @@ def _compute_deltas(baseline: CalcRunComparisonItem, run_item: CalcRunComparison
 )
 def list_calc_runs(
     flowsheet_version_id: uuid.UUID,
-    limit: int = 50,
-    offset: int = 0,
-    status: Optional[str] = None,
-    scenario_id: Optional[uuid.UUID] = None,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    status: Optional[str] = Query(None, description="Optional status filter"),
+    scenario_id: Optional[uuid.UUID] = Query(None, description="Filter by scenario id"),
     scenario_query: Optional[str] = Query(None, description="Substring to match in scenario_name"),
     started_from: Optional[datetime] = Query(None, description="Lower bound for started_at (inclusive)"),
     started_to: Optional[datetime] = Query(None, description="Upper bound for started_at (inclusive)"),
