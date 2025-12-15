@@ -1,5 +1,7 @@
 ﻿# backend/app/core/settings.py
 
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +12,12 @@ class Settings(BaseSettings):
     # Флаг для включения debug-режима FastAPI (пока просто bool)
     app_debug: bool = True
 
+    # Простое обозначение окружения
+    environment: str = "dev"
+
+    # Флаг тестового режима (можно переопределить переменной окружения TESTING=1)
+    testing: bool = False
+
     # Настройки pydantic-settings (v2)
     model_config = SettingsConfigDict(
         env_file=".env",              # читаем переменные из .env
@@ -19,3 +27,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Авто-определение тестового режима, если запущен pytest
+if os.getenv("PYTEST_CURRENT_TEST"):
+    settings.testing = True

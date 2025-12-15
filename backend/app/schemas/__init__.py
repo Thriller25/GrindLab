@@ -61,6 +61,11 @@ from .project import (
     ProjectDashboardResponse,
 )
 from .favorite import FavoriteBase, FavoriteCreate, FavoriteRead
+from .grind_mvp import (
+    GrindMvpInput,
+    GrindMvpResult,
+    GrindMvpRunResponse,
+)
 
 __all__ = [
     "PlantCreate",
@@ -129,6 +134,9 @@ __all__ = [
     "FavoriteBase",
     "FavoriteCreate",
     "FavoriteRead",
+    "GrindMvpInput",
+    "GrindMvpResult",
+    "GrindMvpRunResponse",
 ]
 
 # Resolve forward references

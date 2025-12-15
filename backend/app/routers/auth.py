@@ -35,6 +35,8 @@ from app.schemas.user import UserFavoritesGrouped
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
+ANONYMOUS_EMAIL = "anonymous@grindlab.local"
+ANONYMOUS_ID = uuid.UUID(int=0)
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -104,20 +106,27 @@ async def get_current_user_optional(
     db: Session = Depends(get_db),
 ) -> models.User | None:
     if not token:
-        return None
+        return models.User(
+            id=ANONYMOUS_ID,
+            email=ANONYMOUS_EMAIL,
+            full_name="Anonymous",
+            hashed_password="",
+            is_active=True,
+            is_superuser=False,
+        )
     try:
-        payload = decode_access_token(token)
-        user_id: str | None = payload.get("sub")
-        if user_id is None:
-            return None
-        user_uuid = uuid.UUID(user_id)
-    except (jwt.PyJWTError, ValueError):
-        return None
-
-    user = db.get(models.User, user_uuid)
-    if user is None or not user.is_active:
-        return None
-    return user
+        return await get_current_user(token=token, db=db)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return models.User(
+                id=ANONYMOUS_ID,
+                email=ANONYMOUS_EMAIL,
+                full_name="Anonymous",
+                hashed_password="",
+                is_active=True,
+                is_superuser=False,
+            )
+        raise
 
 
 @router.get("/me", response_model=UserRead)

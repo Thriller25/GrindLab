@@ -15,6 +15,7 @@ class CalcRun(Base):
     flowsheet_version_id = Column(UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False)
     scenario_id = Column(UUID(as_uuid=True), ForeignKey("calc_scenario.id"), nullable=True)
     scenario_name = Column(String(255), nullable=True, default=None)
+    baseline_run_id = Column(UUID(as_uuid=True), nullable=True)
     comment = Column(Text, nullable=True, default=None)
     status = Column(String(32), nullable=False, default="pending")
     started_at = Column(DateTime(timezone=True), nullable=True)

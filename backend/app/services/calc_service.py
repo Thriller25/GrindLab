@@ -11,6 +11,17 @@ from app import models
 from app.schemas.calc_io import CalcInput
 from app.schemas.calc_result import CalcResult, CalcResultKPI, CalcResultStream, CalcResultUnit
 from app.schemas.calc_run import CalcRunCreate, CalcRunRead
+from app.schemas.grind_mvp import (
+    GrindMvpBaselineComparison,
+    GrindMvpClassifier,
+    GrindMvpFeed,
+    GrindMvpInput,
+    GrindMvpKPI,
+    GrindMvpMill,
+    GrindMvpResult,
+    GrindMvpSizeDistribution,
+    GrindMvpSizePoint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -290,3 +301,164 @@ def run_flowsheet_calculation_by_scenario(db: Session, scenario_id: uuid.UUID) -
         input_json=validated_input,
     )
     return run_flowsheet_calculation(db=db, payload=payload)
+
+
+def _build_size_distribution_feed(feed: GrindMvpFeed) -> list[GrindMvpSizePoint]:
+    base = max(feed.p80_mm, 0.0001)
+    sizes = [base * 2.0, base, base / 2.0, base / 12.0]
+    percents = [10.0, 80.0, 95.0, 100.0]
+    return [GrindMvpSizePoint(size_mm=s, cum_percent=p) for s, p in zip(sizes, percents)]
+
+
+def _build_size_distribution_product(classifier: GrindMvpClassifier) -> list[GrindMvpSizePoint]:
+    base = max(classifier.cut_size_p80_mm, 0.0001)
+    sizes = [base * 5.0, base * 2.5, base, base * 0.6, base * 0.4]
+    percents = [10.0, 60.0, 80.0, 95.0, 100.0]
+    return [GrindMvpSizePoint(size_mm=s, cum_percent=p) for s, p in zip(sizes, percents)]
+
+
+def calculate_grind_mvp(input_data: GrindMvpInput) -> GrindMvpResult:
+    if input_data.feed.tonnage_tph <= 0:
+        raise CalculationError("feed.tonnage_tph must be positive")
+    if input_data.feed.p80_mm <= 0:
+        raise CalculationError("feed.p80_mm must be positive")
+    if input_data.mill.power_installed_kw <= 0:
+        raise CalculationError("mill.power_installed_kw must be positive")
+
+    power_utilization = input_data.mill.power_draw_kw / max(input_data.mill.power_installed_kw, 1.0)
+    mill_utilization_percent = max(0.0, min(power_utilization * 100.0, 120.0))
+
+    throughput_tph = input_data.feed.tonnage_tph * (0.9 + 0.2 * power_utilization)
+    throughput_tph = max(1.0, throughput_tph)
+
+    product_p80_mm = input_data.classifier.cut_size_p80_mm * (1.0 + (100.0 - mill_utilization_percent) / 500.0)
+
+    specific_energy_kwh_per_t = input_data.mill.power_draw_kw / throughput_tph
+    circulating_load_percent = input_data.classifier.circulating_load_percent
+
+    kpi = GrindMvpKPI(
+        throughput_tph=throughput_tph,
+        product_p80_mm=product_p80_mm,
+        specific_energy_kwh_per_t=specific_energy_kwh_per_t,
+        circulating_load_percent=circulating_load_percent,
+        mill_utilization_percent=mill_utilization_percent,
+    )
+
+    size_distribution = GrindMvpSizeDistribution(
+        feed=_build_size_distribution_feed(input_data.feed),
+        product=_build_size_distribution_product(input_data.classifier),
+    )
+
+    return GrindMvpResult(
+        model_version=input_data.model_version,
+        kpi=kpi,
+        size_distribution=size_distribution,
+        baseline_comparison=None,
+    )
+
+
+def run_grind_mvp_calculation(db: Session, payload: GrindMvpInput) -> dict:
+    """
+    Create CalcRun and store Grind MVP calculation result.
+    """
+    payload_dict = payload.model_dump(mode="json")
+    started_at = datetime.now(timezone.utc)
+
+    def _normalize_flowsheet_version_id(raw: Any) -> uuid.UUID:
+        try:
+            return uuid.UUID(str(raw))
+        except Exception:
+            return uuid.uuid5(uuid.NAMESPACE_URL, str(raw))
+
+    flowsheet_version_id = _normalize_flowsheet_version_id(payload.flowsheet_version_id)
+
+    calc_run = models.CalcRun(
+        flowsheet_version_id=flowsheet_version_id,
+        scenario_name=payload.scenario_name,
+        baseline_run_id=payload.options.use_baseline_run_id,
+        status=CalcRunStatus.PENDING.value,
+        started_at=started_at,
+        input_json=payload_dict,
+        error_message=None,
+    )
+    db.add(calc_run)
+    db.commit()
+    db.refresh(calc_run)
+
+    try:
+        _persist_status(db, calc_run, CalcRunStatus.RUNNING)
+        result_model = calculate_grind_mvp(payload)
+        # Enrich with baseline comparison if requested
+        if payload.options.use_baseline_run_id:
+            baseline_run = (
+                db.query(models.CalcRun)
+                .filter(
+                    models.CalcRun.id == payload.options.use_baseline_run_id,
+                )
+                .first()
+            )
+            if baseline_run and isinstance(baseline_run.result_json, dict):
+                try:
+                    baseline_result = GrindMvpResult.model_validate(baseline_run.result_json)
+                    cur = result_model.kpi
+                    base = baseline_result.kpi
+                    throughput_delta = (
+                        cur.throughput_tph - base.throughput_tph if base.throughput_tph is not None else None
+                    )
+                    product_p80_delta = (
+                        cur.product_p80_mm - base.product_p80_mm if base.product_p80_mm is not None else None
+                    )
+                    spec_energy_delta = (
+                        cur.specific_energy_kwh_per_t - base.specific_energy_kwh_per_t
+                        if base.specific_energy_kwh_per_t is not None
+                        else None
+                    )
+                    throughput_delta_pct = (
+                        (throughput_delta / base.throughput_tph * 100.0)
+                        if throughput_delta is not None and base.throughput_tph
+                        else None
+                    )
+                    spec_energy_delta_pct = (
+                        (spec_energy_delta / base.specific_energy_kwh_per_t * 100.0)
+                        if spec_energy_delta is not None and base.specific_energy_kwh_per_t
+                        else None
+                    )
+                    result_model.baseline_comparison = GrindMvpBaselineComparison(
+                        baseline_run_id=baseline_run.id,
+                        throughput_delta_tph=throughput_delta,
+                        product_p80_delta_mm=product_p80_delta,
+                        specific_energy_delta_kwhpt=spec_energy_delta,
+                        throughput_delta_percent=throughput_delta_pct,
+                        specific_energy_delta_percent=spec_energy_delta_pct,
+                    )
+                except Exception:
+                    logger.exception("Failed to compute baseline comparison")
+        _persist_status(
+            db,
+            calc_run,
+            CalcRunStatus.SUCCESS,
+            finished_at=datetime.now(timezone.utc),
+            result_json=result_model.model_dump(mode="json"),
+            error_message=None,
+        )
+    except CalculationError as exc:
+        _persist_status(
+            db,
+            calc_run,
+            CalcRunStatus.FAILED,
+            finished_at=datetime.now(timezone.utc),
+            error_message=str(exc),
+        )
+        raise
+    except Exception:
+        _persist_status(
+            db,
+            calc_run,
+            CalcRunStatus.FAILED,
+            finished_at=datetime.now(timezone.utc),
+            error_message="Internal calculation error",
+        )
+        logger.exception("Unexpected calculation error")
+        raise
+
+    return {"calc_run_id": calc_run.id, "result": result_model}
