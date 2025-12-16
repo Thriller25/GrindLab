@@ -1,12 +1,10 @@
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user_optional, get_current_user
 from app.schemas import (
     ProjectCreate,
     ProjectDetail,
@@ -17,23 +15,251 @@ from app.schemas import (
     ProjectMemberAddRequest,
     ProjectMemberRead,
     ProjectDashboardResponse,
+    ProjectFlowsheetVersionRead,
+    GrindMvpRunSummary,
+    ProjectFlowsheetSummary,
+    CalcRunKpiSummary,
+    CalcRunKpiDiffSummary,
 )
 from app.schemas.user import UserRead
 from app.schemas.calc_scenario import CalcScenarioRead
 from app.schemas.calc_run import CalcRunListItem
 from app.schemas.comment import CommentRead
+from app.services.project_service import attach_flowsheet_version_to_project as attach_link_to_project
+from app.services.run_metrics import (
+    extract_kpi,
+    extract_model_version,
+    find_baseline_run_for_version,
+    find_best_project_run,
+    is_grind_mvp_run,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-def _ensure_project_exists_and_get(db: Session, project_id: uuid.UUID) -> models.Project:
-    project = db.get(models.Project, project_id)
+@router.get("", response_model=list[ProjectRead])
+def list_projects(
+    plant_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_optional),
+) -> list[ProjectRead]:
+    query = db.query(models.Project)
+    if plant_id:
+        query = query.filter(models.Project.plant_id == plant_id)
+    projects = query.order_by(models.Project.created_at.desc()).all()
+    return [ProjectRead.model_validate(p, from_attributes=True) for p in projects]
+
+
+def _ensure_project_exists_and_get(db: Session, project_id) -> models.Project:
+    try:
+        project_pk = int(project_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    project = db.get(models.Project, project_pk)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
 
 
+def _build_grind_mvp_summary(run: models.CalcRun) -> GrindMvpRunSummary:
+    input_json = run.input_json if isinstance(run.input_json, dict) else {}
+    result_json = run.result_json if isinstance(run.result_json, dict) else {}
+    kpi = result_json.get("kpi") if isinstance(result_json, dict) else None
+    throughput = kpi.get("throughput_tph") if isinstance(kpi, dict) else None
+    product_p80 = kpi.get("product_p80_mm") if isinstance(kpi, dict) else None
+    spec_energy = kpi.get("specific_energy_kwh_per_t") if isinstance(kpi, dict) else None
+
+    return GrindMvpRunSummary(
+        id=run.id,
+        created_at=run.created_at,
+        model_version=extract_model_version(run) or "grind_mvp_v1",
+        plant_id=str(input_json.get("plant_id")) if input_json.get("plant_id") is not None else None,
+        flowsheet_version_id=run.flowsheet_version_id,
+        scenario_name=run.scenario_name or input_json.get("scenario_name"),
+        project_id=getattr(run, "project_id", None),
+        project_name=getattr(run.project, "name", None) if getattr(run, "project", None) else None,
+        comment=run.comment,
+        throughput_tph=throughput,
+        product_p80_mm=product_p80,
+        specific_energy_kwhpt=spec_energy,
+    )
+
+
+def _build_kpi_summary(run: models.CalcRun) -> CalcRunKpiSummary | None:
+    kpi = extract_kpi(run)
+    if not kpi:
+        return None
+    return CalcRunKpiSummary(
+        id=str(run.id),
+        created_at=run.created_at,
+        throughput_tph=kpi.get("throughput_tph"),
+        product_p80_mm=kpi.get("product_p80_mm"),
+        specific_energy_kwhpt=kpi.get("specific_energy_kwh_per_t"),
+        circulating_load_pct=kpi.get("circulating_load_percent"),
+        power_use_pct=kpi.get("mill_utilization_percent"),
+    )
+
+
+def _find_latest_grind_mvp_run(db: Session, project_id: int, flowsheet_version_id: int) -> models.CalcRun | None:
+    runs = (
+        db.query(models.CalcRun)
+        .filter(
+            models.CalcRun.project_id == project_id,
+            models.CalcRun.flowsheet_version_id == flowsheet_version_id,
+        )
+        .order_by(
+            models.CalcRun.started_at.desc().nullslast(),
+            models.CalcRun.created_at.desc(),
+            models.CalcRun.id.desc(),
+        )
+        .all()
+    )
+    for run in runs:
+        if is_grind_mvp_run(run):
+            return run
+    return None
+
+
+def _find_grind_mvp_runs(db: Session, project_id: int, flowsheet_version_id: int) -> list[models.CalcRun]:
+    runs = (
+        db.query(models.CalcRun)
+        .filter(
+            models.CalcRun.project_id == project_id,
+            models.CalcRun.flowsheet_version_id == flowsheet_version_id,
+        )
+        .order_by(
+            models.CalcRun.started_at.desc().nullslast(),
+            models.CalcRun.created_at.desc(),
+            models.CalcRun.id.desc(),
+        )
+        .all()
+    )
+    return [run for run in runs if is_grind_mvp_run(run)]
+
+
+def _load_project_flowsheet_versions(db: Session, project_id: int) -> list[ProjectFlowsheetVersionRead]:
+    rows = (
+        db.query(models.ProjectFlowsheetVersion, models.FlowsheetVersion, models.Flowsheet)
+        .join(
+            models.FlowsheetVersion,
+            models.ProjectFlowsheetVersion.flowsheet_version_id == models.FlowsheetVersion.id,
+        )
+        .join(models.Flowsheet, models.Flowsheet.id == models.FlowsheetVersion.flowsheet_id)
+        .filter(models.ProjectFlowsheetVersion.project_id == project_id)
+        .all()
+    )
+    result: list[ProjectFlowsheetVersionRead] = []
+    for link, version, flowsheet in rows:
+        updated_at = getattr(version, "updated_at", None) or getattr(link, "updated_at", None) or version.created_at
+        result.append(
+            ProjectFlowsheetVersionRead(
+                id=link.id or version.id,
+                flowsheet_version_id=version.id,
+                flowsheet_name=flowsheet.name,
+                flowsheet_version_label=version.version_label,
+                model_name="grind_mvp_v1",
+                plant_id=flowsheet.plant_id,
+                updated_at=updated_at,
+            )
+        )
+    return result
+
+
+def _get_project_runs(
+    db: Session, project_id: int, flowsheet_version_id: int
+) -> list[models.CalcRun]:
+    return (
+        db.query(models.CalcRun)
+        .filter(
+            models.CalcRun.project_id == project_id,
+            models.CalcRun.flowsheet_version_id == flowsheet_version_id,
+            models.CalcRun.status == "success",
+        )
+        .all()
+    )
+
+
+def _build_project_detail(db: Session, project: models.Project) -> ProjectDetail:
+    flowsheet_versions = _load_project_flowsheet_versions(db, project.id)
+
+    rows = (
+        db.query(models.ProjectFlowsheetVersion, models.FlowsheetVersion, models.Flowsheet, models.Plant)
+        .join(models.FlowsheetVersion, models.ProjectFlowsheetVersion.flowsheet_version_id == models.FlowsheetVersion.id)
+        .join(models.Flowsheet, models.Flowsheet.id == models.FlowsheetVersion.flowsheet_id)
+        .outerjoin(models.Plant, models.Plant.id == models.Flowsheet.plant_id)
+        .filter(models.ProjectFlowsheetVersion.project_id == project.id)
+        .all()
+    )
+
+    summaries: list[ProjectFlowsheetSummary] = []
+    for _, version, flowsheet, plant in rows:
+        baseline = find_baseline_run_for_version(db, version.id)
+        runs_for_project = _get_project_runs(db, project.id, version.id)
+        best = find_best_project_run(db, project.id, version.id) if runs_for_project else None
+        baseline_summary = _build_kpi_summary(baseline) if baseline else None
+        best_summary = _build_kpi_summary(best) if best else None
+        diff_summary: CalcRunKpiDiffSummary | None = None
+        if baseline_summary and best_summary:
+            diff_summary = CalcRunKpiDiffSummary(
+                throughput_tph_delta=(
+                    None
+                    if baseline_summary.throughput_tph is None or best_summary.throughput_tph is None
+                    else best_summary.throughput_tph - baseline_summary.throughput_tph
+                ),
+                specific_energy_kwhpt_delta=(
+                    None
+                    if baseline_summary.specific_energy_kwhpt is None or best_summary.specific_energy_kwhpt is None
+                    else best_summary.specific_energy_kwhpt - baseline_summary.specific_energy_kwhpt
+                ),
+                p80_mm_delta=(
+                    None
+                    if baseline_summary.product_p80_mm is None or best_summary.product_p80_mm is None
+                    else best_summary.product_p80_mm - baseline_summary.product_p80_mm
+                ),
+                circulating_load_pct_delta=(
+                    None
+                    if baseline_summary.circulating_load_pct is None or best_summary.circulating_load_pct is None
+                    else best_summary.circulating_load_pct - baseline_summary.circulating_load_pct
+                ),
+                power_use_pct_delta=(
+                    None
+                    if baseline_summary.power_use_pct is None or best_summary.power_use_pct is None
+                    else best_summary.power_use_pct - baseline_summary.power_use_pct
+                ),
+            )
+
+        summaries.append(
+            ProjectFlowsheetSummary(
+                flowsheet_id=flowsheet.id,
+                flowsheet_name=flowsheet.name,
+                flowsheet_version_id=version.id,
+                flowsheet_version_label=version.version_label,
+                model_code="grind_mvp_v1",
+                plant_name=getattr(plant, "name", None),
+                has_runs=bool(runs_for_project),
+                baseline_run=baseline_summary,
+                best_project_run=best_summary,
+                diff_vs_baseline=diff_summary,
+            )
+        )
+
+    return ProjectDetail(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        owner_user_id=project.owner_user_id,
+        plant_id=project.plant_id,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        flowsheet_versions=flowsheet_versions,
+        flowsheet_summaries=summaries,
+    )
+
+
 def _check_project_read_access(db: Session, project: models.Project, user: models.User) -> None:
+    # Public (ownerless) projects are readable by anyone.
+    if project.owner_user_id is None:
+        return
     if project.owner_user_id == user.id:
         return
     membership = (
@@ -49,12 +275,13 @@ def _check_project_read_access(db: Session, project: models.Project, user: model
 def create_project(
     payload: ProjectCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user_optional),
 ) -> ProjectRead:
     project = models.Project(
         name=payload.name,
         description=payload.description,
         owner_user_id=current_user.id,
+        plant_id=payload.plant_id if payload.plant_id not in ("", None) else None,
     )
     db.add(project)
     db.commit()
@@ -65,7 +292,7 @@ def create_project(
 @router.get("/my", response_model=ProjectListResponse)
 def get_my_projects(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user_optional),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> ProjectListResponse:
@@ -78,79 +305,108 @@ def get_my_projects(
 
 @router.post(
     "/{project_id}/flowsheet-versions/{flowsheet_version_id}",
-    status_code=status.HTTP_201_CREATED,
+    response_model=ProjectDetail,
+    status_code=status.HTTP_200_OK,
 )
 def attach_flowsheet_version_to_project(
-    project_id: uuid.UUID,
-    flowsheet_version_id: uuid.UUID,
+    project_id: str,
+    flowsheet_version_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user_optional),
 ):
     project = _ensure_project_exists_and_get(db, project_id)
     if project.owner_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    flowsheet_version = db.get(models.FlowsheetVersion, flowsheet_version_id)
-    if flowsheet_version is None:
-        raise HTTPException(status_code=404, detail="Flowsheet version not found")
+    attach_link_to_project(db, project.id, flowsheet_version_id, project=project)
+    db.refresh(project)
+    return _build_project_detail(db, project)
 
-    existing = (
+
+@router.get(
+    "/{project_id}/flowsheet-versions/{flowsheet_version_id}/latest-grind-mvp-run",
+    response_model=GrindMvpRunSummary,
+)
+def get_latest_grind_mvp_run_for_project_and_version(
+    project_id: str,
+    flowsheet_version_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_optional),
+) -> GrindMvpRunSummary:
+    project = _ensure_project_exists_and_get(db, project_id)
+    _check_project_read_access(db, project, current_user)
+    run = _find_latest_grind_mvp_run(db, project.id, flowsheet_version_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No grind_mvp_v1 runs found for this project and flowsheet version",
+        )
+    return _build_grind_mvp_summary(run)
+
+
+@router.get(
+    "/{project_id}/flowsheet-versions/{flowsheet_version_id}/grind-mvp-runs",
+    response_model=list[GrindMvpRunSummary],
+)
+def list_grind_mvp_runs_for_project_and_version(
+    project_id: str,
+    flowsheet_version_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_optional),
+) -> list[GrindMvpRunSummary]:
+    project = _ensure_project_exists_and_get(db, project_id)
+    _check_project_read_access(db, project, current_user)
+    runs = _find_grind_mvp_runs(db, project.id, flowsheet_version_id)
+    if not runs:
+        return []
+    return [_build_grind_mvp_summary(run) for run in runs]
+
+
+@router.delete(
+    "/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def detach_flowsheet_version_from_project(
+    project_id: str,
+    flowsheet_version_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_optional),
+):
+    project = _ensure_project_exists_and_get(db, project_id)
+    if project.owner_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    link = (
         db.query(models.ProjectFlowsheetVersion)
         .filter(
-            models.ProjectFlowsheetVersion.project_id == project_id,
+            models.ProjectFlowsheetVersion.project_id == project.id,
             models.ProjectFlowsheetVersion.flowsheet_version_id == flowsheet_version_id,
         )
         .first()
     )
-    if existing is None:
-        link = models.ProjectFlowsheetVersion(
-            project_id=project_id,
-            flowsheet_version_id=flowsheet_version_id,
-        )
-        db.add(link)
+    if link:
+        db.delete(link)
         db.commit()
-
-    return {"detail": "Attached"}
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)
 def get_project_detail(
-    project_id: uuid.UUID,
+    project_id: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user_optional),
 ) -> ProjectDetail:
     project = _ensure_project_exists_and_get(db, project_id)
-    _check_project_read_access(db, project, current_user)
-
-    links = (
-        db.query(models.ProjectFlowsheetVersion)
-        .filter(models.ProjectFlowsheetVersion.project_id == project_id)
-        .all()
-    )
-    version_ids = [link.flowsheet_version_id for link in links]
-    if version_ids:
-        versions = (
-            db.query(models.FlowsheetVersion)
-            .filter(models.FlowsheetVersion.id.in_(version_ids))
-            .all()
-        )
-    else:
-        versions = []
-
-    flowsheet_version_dtos = [FlowsheetVersionRead.model_validate(v, from_attributes=True) for v in versions]
-
-    return ProjectDetail(
-        id=project.id,
-        name=project.name,
-        description=project.description,
-        owner_user_id=project.owner_user_id,
-        created_at=project.created_at,
-        flowsheet_versions=flowsheet_version_dtos,
-    )
+    # Публичные проекты (owner_user_id is None) доступны без авторизации,
+    # приватные — только владельцу.
+    if project.owner_user_id is not None:
+        if current_user is None or project.owner_user_id != getattr(current_user, "id", None):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    return _build_project_detail(db, project)
 
 
 def _calculate_project_summary(
-    db: Session, project: models.Project, flowsheet_version_ids: list[uuid.UUID], current_user: models.User
+    db: Session, project: models.Project, flowsheet_version_ids: list[int], current_user: models.User
 ) -> ProjectSummary:
     _check_project_read_access(db, project, current_user)
     if not flowsheet_version_ids:
@@ -256,14 +512,14 @@ def _calculate_project_summary(
 
 @router.get("/{project_id}/summary", response_model=ProjectSummary)
 def get_project_summary(
-    project_id: uuid.UUID,
+    project_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> ProjectSummary:
     project = _ensure_project_exists_and_get(db, project_id)
     links = (
         db.query(models.ProjectFlowsheetVersion)
-        .filter(models.ProjectFlowsheetVersion.project_id == project_id)
+        .filter(models.ProjectFlowsheetVersion.project_id == project.id)
         .all()
     )
     flowsheet_version_ids = [link.flowsheet_version_id for link in links]
@@ -272,14 +528,14 @@ def get_project_summary(
 
 @router.get("/{project_id}/members", response_model=list[ProjectMemberRead])
 def list_project_members(
-    project_id: uuid.UUID,
+    project_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> list[ProjectMemberRead]:
     project = _ensure_project_exists_and_get(db, project_id)
     _check_project_read_access(db, project, current_user)
 
-    memberships = db.query(models.ProjectMember).filter(models.ProjectMember.project_id == project_id).all()
+    memberships = db.query(models.ProjectMember).filter(models.ProjectMember.project_id == project.id).all()
     result: list[ProjectMemberRead] = []
     for m in memberships:
         result.append(
@@ -294,7 +550,7 @@ def list_project_members(
 
 @router.post("/{project_id}/members", response_model=ProjectMemberRead, status_code=status.HTTP_201_CREATED)
 def add_project_member(
-    project_id: uuid.UUID,
+    project_id: str,
     payload: ProjectMemberAddRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -335,8 +591,8 @@ def add_project_member(
 
 @router.delete("/{project_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_project_member(
-    project_id: uuid.UUID,
-    user_id: uuid.UUID,
+    project_id: str,
+    user_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -363,14 +619,14 @@ RECENT_COMMENTS_LIMIT = 10
 
 @router.get("/{project_id}/dashboard", response_model=ProjectDashboardResponse)
 def get_project_dashboard(
-    project_id: uuid.UUID,
+    project_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> ProjectDashboardResponse:
     project = _ensure_project_exists_and_get(db, project_id)
     links = (
         db.query(models.ProjectFlowsheetVersion)
-        .filter(models.ProjectFlowsheetVersion.project_id == project_id)
+        .filter(models.ProjectFlowsheetVersion.project_id == project.id)
         .all()
     )
     flowsheet_version_ids = [link.flowsheet_version_id for link in links]

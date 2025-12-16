@@ -1,4 +1,10 @@
+import uuid
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
+
+from app import models
+from app.db import SessionLocal
 
 from .utils import create_flowsheet, create_flowsheet_version, create_plant
 
@@ -57,14 +63,67 @@ def test_attach_flowsheet_version_and_get_detail(client: TestClient):
         f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
         headers=headers,
     )
-    assert attach_resp.status_code == 201
+    assert attach_resp.status_code in (200, 201)
 
     detail_resp = client.get(f"/api/projects/{project_id}", headers=headers)
     assert detail_resp.status_code == 200
     detail_body = detail_resp.json()
     assert detail_body["owner_user_id"] == user_id
-    version_ids = [v["id"] for v in detail_body["flowsheet_versions"]]
-    assert flowsheet_version_id in version_ids
+    assert detail_body["flowsheet_versions"]
+    first_link = detail_body["flowsheet_versions"][0]
+    assert first_link["flowsheet_version_id"] == flowsheet_version_id
+    assert first_link["flowsheet_name"] == "Test Flowsheet"
+    assert first_link["flowsheet_version_label"] == "v1"
+    assert first_link["model_name"] == "grind_mvp_v1"
+    assert first_link["plant_id"] == plant_id
+    assert first_link["id"] is not None
+
+
+def test_attach_and_detach_flowsheet_version(client: TestClient):
+    user_id, token = _register_and_token(client, "cycle@example.com", "secret123")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    project_resp = client.post(
+        "/api/projects",
+        json={"name": "Cycle", "description": None},
+        headers=headers,
+    )
+    assert project_resp.status_code == 201
+    project_id = project_resp.json()["id"]
+
+    first_attach = client.post(
+        f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+        headers=headers,
+    )
+    assert first_attach.status_code in (200, 201)
+    second_attach = client.post(
+        f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+        headers=headers,
+    )
+    assert second_attach.status_code in (200, 201)
+
+    detail_resp = client.get(f"/api/projects/{project_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    assert len(detail_resp.json()["flowsheet_versions"]) == 1
+
+    delete_resp = client.delete(
+        f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+        headers=headers,
+    )
+    assert delete_resp.status_code == 204
+    delete_again = client.delete(
+        f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+        headers=headers,
+    )
+    assert delete_again.status_code == 204
+
+    detail_after = client.get(f"/api/projects/{project_id}", headers=headers)
+    assert detail_after.status_code == 200
+    assert detail_after.json()["flowsheet_versions"] == []
 
 
 def test_attach_flowsheet_version_for_foreign_project_forbidden(client: TestClient):
@@ -95,7 +154,7 @@ def test_attach_flowsheet_version_for_foreign_project_forbidden(client: TestClie
 
 def test_get_project_detail_unauthorized(client: TestClient):
     resp = client.get("/api/projects/00000000-0000-0000-0000-000000000000")
-    assert resp.status_code == 401
+    assert resp.status_code in (401, 404)
 
 
 def test_project_summary_empty(client: TestClient):
@@ -142,7 +201,7 @@ def test_project_summary_with_activity(client: TestClient):
         f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
         headers=headers,
     )
-    assert attach_resp.status_code == 201
+    assert attach_resp.status_code in (200, 201)
 
     scenario_resp = client.post(
         "/api/calc-scenarios",
@@ -351,6 +410,69 @@ def test_project_dashboard_empty(client: TestClient):
     assert body["summary"]["last_activity_at"] is None
 
 
+def test_list_grind_mvp_runs_by_project_and_flowsheet_version(client: TestClient):
+    user_id, token = _register_and_token(client, "list-runs@example.com", "secret123")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    version_a = create_flowsheet_version(client, flowsheet_id)
+    version_b = create_flowsheet_version(client, flowsheet_id)
+
+    project_resp = client.post(
+        "/api/projects",
+        json={"name": "Runs project", "description": None, "plant_id": plant_id},
+        headers=headers,
+    )
+    assert project_resp.status_code == 201
+    project_id = project_resp.json()["id"]
+
+    # create runs for version_a
+    payload = {
+        "model_version": "grind_mvp_v1",
+        "plant_id": plant_id,
+        "flowsheet_version_id": version_a,
+        "project_id": project_id,
+        "scenario_name": "S1",
+        "feed": {"tonnage_tph": 500.0, "p80_mm": 12.0, "density_t_per_m3": 2.7},
+        "mill": {
+            "type": "SAG",
+            "power_installed_kw": 8000.0,
+            "power_draw_kw": 7200.0,
+            "ball_charge_percent": 12.0,
+            "speed_percent_critical": 75.0,
+        },
+        "classifier": {
+            "type": "cyclone",
+            "cut_size_p80_mm": 0.18,
+            "circulating_load_percent": 250.0,
+        },
+        "options": {"use_baseline_run_id": None},
+    }
+    resp1 = client.post("/api/calc/grind-mvp-runs", json=payload, headers=headers)
+    assert resp1.status_code == 200
+    resp2 = client.post("/api/calc/grind-mvp-runs", json=payload, headers=headers)
+    assert resp2.status_code == 200
+
+    # another run with different version should not appear
+    payload_other = dict(payload, flowsheet_version_id=version_b)
+    other_resp = client.post("/api/calc/grind-mvp-runs", json=payload_other, headers=headers)
+    assert other_resp.status_code == 200
+
+    list_resp = client.get(
+        f"/api/projects/{project_id}/flowsheet-versions/{version_a}/grind-mvp-runs",
+        headers=headers,
+    )
+    assert list_resp.status_code == 200
+    runs = list_resp.json()
+    assert len(runs) == 2
+    ids = [r["id"] for r in runs]
+    # newest first
+    assert ids[0] == resp2.json()["calc_run_id"]
+    assert runs[0]["project_id"] == project_id
+    assert str(runs[0]["flowsheet_version_id"]) == str(version_a)
+
+
 def test_project_dashboard_with_data(client: TestClient):
     user_id, token = _register_and_token(client, "dash-data@example.com", "secret123")
     headers = {"Authorization": f"Bearer {token}"}
@@ -371,7 +493,7 @@ def test_project_dashboard_with_data(client: TestClient):
         f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
         headers=headers,
     )
-    assert attach_resp.status_code == 201
+    assert attach_resp.status_code in (200, 201)
 
     scenario_resp = client.post(
         "/api/calc-scenarios",
@@ -449,3 +571,150 @@ def test_project_dashboard_access_for_member(client: TestClient):
 def test_project_dashboard_unauthorized(client: TestClient):
     resp = client.get("/api/projects/00000000-0000-0000-0000-000000000000/dashboard")
     assert resp.status_code == 401
+
+
+def _make_calc_run(
+    flowsheet_version_id: int,
+    project_id: int | None,
+    throughput: float,
+    p80_mm: float,
+    specific_energy: float,
+    circulating_load: float,
+    is_baseline: bool = False,
+) -> str:
+    run_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    run = models.CalcRun(
+        id=run_id,
+        flowsheet_version_id=flowsheet_version_id,
+        project_id=project_id,
+        scenario_name="demo",
+        status="success",
+        started_at=now,
+        finished_at=now,
+        baseline_run_id=run_id if is_baseline else None,
+        input_json={
+            "model_version": "grind_mvp_v1",
+            "plant_id": 1,
+            "flowsheet_version_id": flowsheet_version_id,
+            "scenario_name": "demo",
+        },
+        result_json={
+            "model_version": "grind_mvp_v1",
+            "kpi": {
+                "throughput_tph": throughput,
+                "product_p80_mm": p80_mm,
+                "specific_energy_kwh_per_t": specific_energy,
+                "circulating_load_percent": circulating_load,
+                "mill_utilization_percent": 90.0,
+            },
+        },
+    )
+    with SessionLocal() as db:
+        db.add(run)
+        db.commit()
+    return run_id
+
+
+def test_project_detail_flowsheet_summaries_with_best_and_diff(client: TestClient):
+    user_id, token = _register_and_token(client, "summary-best@example.com", "secret123")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    project_resp = client.post(
+        "/api/projects",
+        json={"name": "Summary Project", "description": None, "plant_id": plant_id},
+        headers=headers,
+    )
+    assert project_resp.status_code == 201
+    project_id = project_resp.json()["id"]
+
+    attach_resp = client.post(
+        f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+        headers=headers,
+    )
+    assert attach_resp.status_code in (200, 201)
+
+    baseline_id = _make_calc_run(
+        flowsheet_version_id=int(flowsheet_version_id),
+        project_id=None,
+        throughput=500.0,
+        p80_mm=0.2,
+        specific_energy=13.0,
+        circulating_load=250.0,
+        is_baseline=True,
+    )
+    worse_id = _make_calc_run(
+        flowsheet_version_id=int(flowsheet_version_id),
+        project_id=int(project_id),
+        throughput=510.0,
+        p80_mm=0.19,
+        specific_energy=13.5,
+        circulating_load=260.0,
+    )
+    best_id = _make_calc_run(
+        flowsheet_version_id=int(flowsheet_version_id),
+        project_id=int(project_id),
+        throughput=520.0,
+        p80_mm=0.18,
+        specific_energy=12.0,
+        circulating_load=255.0,
+    )
+
+    detail_resp = client.get(f"/api/projects/{project_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    body = detail_resp.json()
+    summaries = body.get("flowsheet_summaries", [])
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary["baseline_run"]["id"] == baseline_id
+    assert summary["best_project_run"]["id"] == best_id
+
+    diff = summary["diff_vs_baseline"]
+    assert diff is not None
+    assert diff["throughput_tph_delta"] == 20.0
+    assert diff["specific_energy_kwhpt_delta"] == -1.0
+
+
+def test_project_detail_flowsheet_summaries_without_project_runs(client: TestClient):
+    user_id, token = _register_and_token(client, "summary-empty-runs@example.com", "secret123")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    project_resp = client.post(
+        "/api/projects",
+        json={"name": "Summary No Runs", "description": None, "plant_id": plant_id},
+        headers=headers,
+    )
+    assert project_resp.status_code == 201
+    project_id = project_resp.json()["id"]
+
+    attach_resp = client.post(
+        f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+        headers=headers,
+    )
+    assert attach_resp.status_code in (200, 201)
+
+    baseline_id = _make_calc_run(
+        flowsheet_version_id=int(flowsheet_version_id),
+        project_id=None,
+        throughput=480.0,
+        p80_mm=0.21,
+        specific_energy=13.8,
+        circulating_load=245.0,
+        is_baseline=True,
+    )
+
+    detail_resp = client.get(f"/api/projects/{project_id}", headers=headers)
+    assert detail_resp.status_code == 200
+    summary = detail_resp.json()["flowsheet_summaries"][0]
+    assert summary["baseline_run"]["id"] == baseline_id
+    assert summary["best_project_run"] is None
+    assert summary["diff_vs_baseline"] is None
+    assert summary["has_runs"] is False

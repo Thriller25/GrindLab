@@ -13,6 +13,7 @@ from .flowsheet_kpi import KpiAggregate, ScenarioKpiSummary, FlowsheetVersionKpi
 from .unit import UnitCreate, UnitRead, UnitUpdate
 from .calc_run import (
     CalcRunRead,
+    CalcRunListItem,
     CalcRunComparisonItem,
     CalcRunCompareResponse,
     CalcRunDelta,
@@ -30,6 +31,8 @@ from .user import (
     Token,
     UserActivitySummary,
     ChangePasswordRequest,
+    UserFavoritesGrouped,
+    UserDashboardResponse,
 )
 from .calc_comparison import (
     CalcComparisonBase,
@@ -54,12 +57,22 @@ from .project import (
     ProjectListItem,
     ProjectListResponse,
     ProjectDetail,
+    ProjectFlowsheetVersionRead,
     ProjectSummary,
     ProjectMemberAddRequest,
     ProjectMemberRead,
     ProjectDashboardResponse,
+    ProjectFlowsheetSummary,
+    CalcRunKpiSummary,
+    CalcRunKpiDiffSummary,
 )
 from .favorite import FavoriteBase, FavoriteCreate, FavoriteRead
+from .grind_mvp import (
+    GrindMvpInput,
+    GrindMvpResult,
+    GrindMvpRunResponse,
+    GrindMvpRunSummary,
+)
 
 __all__ = [
     "PlantCreate",
@@ -83,6 +96,7 @@ __all__ = [
     "UnitRead",
     "UnitUpdate",
     "CalcRunRead",
+    "CalcRunListItem",
     "CalcRunComparisonItem",
     "CalcRunCompareResponse",
     "CalcRunDelta",
@@ -104,6 +118,8 @@ __all__ = [
     "Token",
     "UserActivitySummary",
     "ChangePasswordRequest",
+    "UserFavoritesGrouped",
+    "UserDashboardResponse",
     "CalcComparisonBase",
     "CalcComparisonCreate",
     "CalcComparisonRead",
@@ -122,11 +138,22 @@ __all__ = [
     "ProjectListItem",
     "ProjectListResponse",
     "ProjectDetail",
+    "ProjectFlowsheetVersionRead",
     "ProjectSummary",
     "ProjectMemberAddRequest",
     "ProjectMemberRead",
     "ProjectDashboardResponse",
+    "ProjectFlowsheetSummary",
+    "CalcRunKpiSummary",
+    "CalcRunKpiDiffSummary",
     "FavoriteBase",
     "FavoriteCreate",
     "FavoriteRead",
+    "GrindMvpInput",
+    "GrindMvpResult",
+    "GrindMvpRunResponse",
+    "GrindMvpRunSummary",
 ]
+
+UserDashboardResponse.model_rebuild()
+UserFavoritesGrouped.model_rebuild()
