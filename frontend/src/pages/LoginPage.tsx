@@ -25,10 +25,10 @@ export const LoginPage = () => {
         setToken(access_token);
         navigate("/", { replace: true });
       } else {
-        setError("Не удалось получить токен авторизации");
+        setError("Не удалось получить токен");
       }
     } catch (err) {
-      setError("Не удалось войти. Проверьте логин и пароль.");
+      setError("Неверный логин или пароль");
     } finally {
       setLoading(false);
     }
@@ -37,7 +37,7 @@ export const LoginPage = () => {
   return (
     <div className="page">
       <div className="card">
-        <h1>Вход в GrindLab</h1>
+        <h1>GrindLab — Login</h1>
         <form onSubmit={handleSubmit} className="form">
           <label>
             Email
