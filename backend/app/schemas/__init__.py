@@ -19,6 +19,7 @@ from .calc_run import (
     CalcRunCompareWithBaselineItem,
     CalcRunCompareWithBaselineResponse,
 )
+from .calc_result import CalcResult, CalcResultKPI, CalcResultStream, CalcResultUnit
 from .comment import CommentBase, CommentCreate, CommentRead, CommentListResponse
 from .comment import UserCommentCreate
 from .user import (
@@ -74,6 +75,10 @@ __all__ = [
     "CalcRunDelta",
     "CalcRunCompareWithBaselineItem",
     "CalcRunCompareWithBaselineResponse",
+    "CalcResult",
+    "CalcResultKPI",
+    "CalcResultStream",
+    "CalcResultUnit",
     "CommentBase",
     "CommentCreate",
     "CommentRead",
