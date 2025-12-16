@@ -9,6 +9,7 @@ from . import calc_runs
 from . import calc_scenarios
 from . import calc_comparisons
 from . import comments
+from . import me
 from . import auth
 
 api_router = APIRouter()
@@ -28,5 +29,6 @@ __all__ = [
     "calc_scenarios",
     "calc_comparisons",
     "comments",
+    "me",
     "auth",
 ]
