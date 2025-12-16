@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db
+from app.routers.auth import get_current_user_optional
 from app.schemas.calc_scenario import (
     CalcScenarioCreate,
     CalcScenarioListItem,
@@ -120,7 +121,11 @@ def update_calc_scenario(
 
 
 @router.post("/{scenario_id}/set-baseline", response_model=CalcScenarioRead)
-def set_baseline_scenario(scenario_id: uuid.UUID, db: Session = Depends(get_db)) -> CalcScenarioRead:
+def set_baseline_scenario(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> CalcScenarioRead:
     scenario = get_calc_scenario_or_404(db, scenario_id)
     _apply_baseline(db, scenario, True)
     db.commit()
@@ -129,7 +134,11 @@ def set_baseline_scenario(scenario_id: uuid.UUID, db: Session = Depends(get_db))
 
 
 @router.post("/{scenario_id}/unset-baseline", response_model=CalcScenarioRead)
-def unset_baseline_scenario(scenario_id: uuid.UUID, db: Session = Depends(get_db)) -> CalcScenarioRead:
+def unset_baseline_scenario(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> CalcScenarioRead:
     scenario = get_calc_scenario_or_404(db, scenario_id)
     _apply_baseline(db, scenario, False)
     db.commit()
