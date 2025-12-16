@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Text, Boolean, DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -22,3 +23,10 @@ class FlowsheetVersion(Base):
     units = relationship("Unit", back_populates="flowsheet_version")
     calc_runs = relationship("CalcRun", back_populates="flowsheet_version")
     calc_scenarios = relationship("CalcScenario", back_populates="flowsheet_version")
+    project_links = relationship(
+        "ProjectFlowsheetVersion",
+        back_populates="flowsheet_version",
+        cascade="all, delete-orphan",
+        overlaps="projects,flowsheet_versions,project,project_links",
+    )
+    projects = association_proxy("project_links", "project")

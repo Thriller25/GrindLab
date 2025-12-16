@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import Session
@@ -39,7 +41,7 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 @router.get("", response_model=list[ProjectRead])
 def list_projects(
-    plant_id: int | None = Query(default=None),
+    plant_id: uuid.UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user_optional),
 ) -> list[ProjectRead]:
@@ -292,15 +294,51 @@ def create_project(
 @router.get("/my", response_model=ProjectListResponse)
 def get_my_projects(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_optional),
+    current_user: models.User | None = Depends(get_current_user_optional),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> ProjectListResponse:
-    query = db.query(models.Project).filter(models.Project.owner_user_id == current_user.id)
+    query = db.query(models.Project)
+    if current_user is None:
+        query = query.filter(models.Project.owner_user_id.is_(None))
+    else:
+        query = query.filter(models.Project.owner_user_id == current_user.id)
     total = query.count()
     items = query.order_by(models.Project.created_at.desc()).offset(offset).limit(limit).all()
     dto_items = [ProjectRead.model_validate(item, from_attributes=True) for item in items]
     return ProjectListResponse(items=dto_items, total=total)
+
+
+@router.post("/demo-seed", response_model=ProjectRead, status_code=status.HTTP_200_OK)
+def seed_demo_project(
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> ProjectRead:
+    from app.demo_seed import (
+        _get_or_create_demo_user,
+        seed_plants_and_flowsheets,
+        seed_projects,
+        seed_project_flowsheet_links,
+        seed_grind_mvp_runs,
+    )
+
+    _get_or_create_demo_user(db)
+    plants, versions = seed_plants_and_flowsheets(db)
+    gold_plant = plants.get("GOLD-1")
+    projects = seed_projects(db, gold_plant_id=gold_plant.id if gold_plant else None)
+
+    demo_versions = [versions.get("gold_base_v1"), versions.get("gold_opt_v2")]
+    demo_versions = [v for v in demo_versions if v is not None]
+    if projects and demo_versions:
+        seed_project_flowsheet_links(db, projects, demo_versions)
+        seed_grind_mvp_runs(db, projects, demo_versions)
+
+    if not projects:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create demo project")
+
+    project = projects[0]
+    db.refresh(project)
+    return ProjectRead.model_validate(project, from_attributes=True)
 
 
 @router.post(

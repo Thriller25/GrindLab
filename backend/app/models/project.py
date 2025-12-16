@@ -1,4 +1,6 @@
 from sqlalchemy import Column, DateTime, ForeignKey, String, Text, func, Integer
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -13,7 +15,7 @@ class Project(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     owner_user_id = Column(Integer, ForeignKey("user.id"), nullable=True)
-    plant_id = Column(Integer, ForeignKey("plant.id"), nullable=True)
+    plant_id = Column(UUID(as_uuid=True), ForeignKey("plant.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -26,9 +28,4 @@ class Project(Base):
         cascade="all, delete-orphan",
         overlaps="flowsheet_versions,project_links,projects",
     )
-    flowsheet_versions = relationship(
-        "FlowsheetVersion",
-        secondary="project_flowsheet_version",
-        back_populates="projects",
-        overlaps="project_links,project,flowsheet_version_links",
-    )
+    flowsheet_versions = association_proxy("flowsheet_version_links", "flowsheet_version")

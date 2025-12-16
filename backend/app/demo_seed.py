@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
+import uuid
 
 from app import models
 from app.core.security import hash_password
@@ -173,7 +174,7 @@ def seed_plants_and_flowsheets(db) -> Tuple[Dict[str, models.Plant], Dict[str, m
     return plants, versions
 
 
-def seed_projects(db, gold_plant_id: int | None) -> List[models.Project]:
+def seed_projects(db, gold_plant_id: uuid.UUID | None) -> List[models.Project]:
     created_any = False
     reset_owners = False
     projects: List[models.Project] = []
@@ -258,15 +259,15 @@ def seed_project_flowsheet_links(
 
 
 def _build_demo_input_json(
-    plant_id: int | None,
-    flowsheet_version_id: int,
+    plant_id: uuid.UUID | None,
+    flowsheet_version_id: uuid.UUID,
     scenario_name: str,
     project_id: int,
 ) -> dict:
     return {
         "model_version": "grind_mvp_v1",
-        "plant_id": plant_id,
-        "flowsheet_version_id": flowsheet_version_id,
+        "plant_id": str(plant_id) if plant_id is not None else None,
+        "flowsheet_version_id": str(flowsheet_version_id),
         "scenario_name": scenario_name,
         "project_id": project_id,
         "feed": {"tonnage_tph": 500, "p80_mm": 0.18, "density_t_per_m3": 2.6},

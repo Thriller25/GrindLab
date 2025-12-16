@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -12,11 +13,11 @@ from app.schemas.comment import CommentRead
 
 class ProjectFlowsheetVersionRead(BaseModel):
     id: int
-    flowsheet_version_id: int
+    flowsheet_version_id: uuid.UUID
     flowsheet_name: Optional[str] = None
     flowsheet_version_label: Optional[str] = None
     model_name: Optional[str] = None
-    plant_id: Optional[int] = None
+    plant_id: Optional[uuid.UUID] = None
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
@@ -24,7 +25,7 @@ class ProjectFlowsheetVersionRead(BaseModel):
 class ProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
-    plant_id: Optional[int] = None
+    plant_id: Optional[uuid.UUID] = None
 
 
 class ProjectCreate(ProjectBase):
@@ -103,9 +104,9 @@ class CalcRunKpiDiffSummary(BaseModel):
 
 
 class ProjectFlowsheetSummary(BaseModel):
-    flowsheet_id: int
+    flowsheet_id: uuid.UUID
     flowsheet_name: str
-    flowsheet_version_id: int
+    flowsheet_version_id: uuid.UUID
     flowsheet_version_label: str
     model_code: str
     plant_name: Optional[str] = None
