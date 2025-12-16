@@ -1,14 +1,8 @@
 from datetime import datetime
-from typing import Dict, Optional, List, TYPE_CHECKING
+from typing import Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    from app.schemas.project import ProjectRead
-    from app.schemas.calc_run import CalcRunListItem
-    from app.schemas.comment import CommentRead
-    from app.schemas.calc_scenario import CalcScenarioRead
+from pydantic import BaseModel
 
 
 class UserBase(BaseModel):
@@ -51,19 +45,3 @@ class UserActivitySummary(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
-
-
-class UserFavoritesGrouped(BaseModel):
-    projects: List["ProjectRead"] = Field(default_factory=list)
-    scenarios: List["CalcScenarioRead"] = Field(default_factory=list)
-    calc_runs: List["CalcRunListItem"] = Field(default_factory=list)
-
-
-class UserDashboardResponse(BaseModel):
-    user: UserRead
-    summary: UserActivitySummary
-    projects: List["ProjectRead"]
-    member_projects: List["ProjectRead"]
-    recent_calc_runs: List["CalcRunListItem"]
-    recent_comments: List["CommentRead"]
-    favorites: "UserFavoritesGrouped" = Field(default_factory=lambda: UserFavoritesGrouped())

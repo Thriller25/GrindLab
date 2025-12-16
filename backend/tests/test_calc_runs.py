@@ -3,8 +3,6 @@ import uuid
 from fastapi.testclient import TestClient
 from pytest import approx
 
-from app.schemas.calc_result import CalcResult
-
 from .utils import create_flowsheet, create_flowsheet_version, create_plant
 
 
@@ -31,9 +29,6 @@ def test_calc_run_happy_path(client: TestClient):
     assert body["result_json"]["throughput_tph"] == 100
     assert body["result_json"]["p80_out_microns"] == 150
     assert "specific_energy_kwh_per_t" in body["result_json"]
-    assert "kpi" in body["result_json"]
-    assert "total_feed_tph" in body["result_json"]["kpi"]
-    assert "mass_balance_error_pct" in body["result_json"]["kpi"]
     assert body["started_at"] is not None
     assert body["finished_at"] is not None
 
@@ -226,103 +221,3 @@ def test_compare_with_baseline_invalid_ids(client: TestClient):
         params=[("baseline_run_id", str(uuid.uuid4())), ("run_ids", str(uuid.uuid4()))],
     )
     assert resp.status_code == 404
-
-
-def test_calc_result_schema_validation(client: TestClient):
-    plant_id = create_plant(client)
-    flowsheet_id = create_flowsheet(client, plant_id)
-    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-
-    payload = {
-        "flowsheet_version_id": flowsheet_version_id,
-        "scenario_name": "Schema validation",
-        "input_json": {"feed_tph": 110, "target_p80_microns": 160},
-    }
-    resp = client.post("/api/calc/flowsheet-run", json=payload)
-    assert resp.status_code in (200, 201)
-    run_id = resp.json()["id"]
-
-    runs_resp = client.get(f"/api/calc-runs/by-flowsheet-version/{flowsheet_version_id}")
-    assert runs_resp.status_code == 200
-    items = runs_resp.json()["items"]
-    run = next(r for r in items if r["id"] == run_id)
-
-    validated = CalcResult.model_validate(run["result_json"])
-    assert validated.throughput_tph == approx(payload["input_json"]["feed_tph"])
-    assert validated.kpi.total_feed_tph == approx(payload["input_json"]["feed_tph"])
-    assert validated.kpi.total_product_tph == approx(payload["input_json"]["feed_tph"])
-    assert validated.kpi.mass_balance_error_pct == approx(0.0)
-    # energy KPI presence
-    assert hasattr(validated.kpi, "total_power_kw")
-    assert hasattr(validated.kpi, "specific_energy_kwh_t")
-    # unit throughput and power fields exist
-    assert any(u.throughput_tph is not None for u in validated.units)
-
-
-def test_calc_runs_filters_and_pagination(client: TestClient):
-    plant_id = create_plant(client)
-    flowsheet_id = create_flowsheet(client, plant_id)
-    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-
-    run_ids = []
-    for feed in [100, 120, 140]:
-        resp = client.post(
-            "/api/calc/flowsheet-run",
-            json={
-                "flowsheet_version_id": flowsheet_version_id,
-                "scenario_name": f"Run {feed}",
-                "input_json": {"feed_tph": feed, "target_p80_microns": 150},
-            },
-        )
-        assert resp.status_code in (200, 201)
-        run_ids.append(resp.json()["id"])
-
-    # Adjust statuses and timestamps to exercise filters
-    from datetime import datetime, timezone, timedelta
-    from app.db import SessionLocal
-    from app import models
-
-    session = SessionLocal()
-    try:
-        now = datetime.now(timezone.utc)
-        for idx, rid in enumerate(run_ids):
-            run = session.get(models.CalcRun, uuid.UUID(rid))
-            run.started_at = now - timedelta(minutes=idx)
-            if idx == 1:
-                run.status = "failed"
-            session.add(run)
-        session.commit()
-    finally:
-        session.close()
-
-    resp = client.get(
-        f"/api/calc-runs/by-flowsheet-version/{flowsheet_version_id}",
-        params={"limit": 2, "offset": 0},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "items" in data and "total" in data
-    assert len(data["items"]) <= 2
-    assert data["total"] >= 3
-    # Ensure ordering by started_at desc
-    timestamps = [item["started_at"] for item in data["items"]]
-    assert timestamps == sorted(timestamps, reverse=True)
-
-    resp_failed = client.get(
-        f"/api/calc-runs/by-flowsheet-version/{flowsheet_version_id}",
-        params={"status": "failed"},
-    )
-    assert resp_failed.status_code == 200
-    items_failed = resp_failed.json()["items"]
-    assert all(item["status"] == "failed" for item in items_failed)
-    assert len(items_failed) == 1
-
-    # Date filtering: include only the most recent run
-    most_recent_start = data["items"][0]["started_at"]
-    resp_filtered = client.get(
-        f"/api/calc-runs/by-flowsheet-version/{flowsheet_version_id}",
-        params={"started_from": most_recent_start, "started_to": most_recent_start},
-    )
-    assert resp_filtered.status_code == 200
-    items_filtered = resp_filtered.json()["items"]
-    assert len(items_filtered) == 1

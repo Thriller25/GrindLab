@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.db import Base
+from app.models.user import User
 
 
 class CalcRun(Base):
@@ -15,8 +16,8 @@ class CalcRun(Base):
     flowsheet_version_id = Column(UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False)
     scenario_id = Column(UUID(as_uuid=True), ForeignKey("calc_scenario.id"), nullable=True)
     scenario_name = Column(String(255), nullable=True, default=None)
-    baseline_run_id = Column(UUID(as_uuid=True), nullable=True)
     comment = Column(Text, nullable=True, default=None)
+    started_by_user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=True)
     status = Column(String(32), nullable=False, default="pending")
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
@@ -28,3 +29,4 @@ class CalcRun(Base):
 
     flowsheet_version = relationship("FlowsheetVersion", back_populates="calc_runs")
     scenario = relationship("CalcScenario", back_populates="calc_runs")
+    started_by_user = relationship(User, lazy="joined")

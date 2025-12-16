@@ -9,6 +9,7 @@ from . import calc_runs
 from . import calc_scenarios
 from . import calc_comparisons
 from . import comments
+from . import auth
 
 api_router = APIRouter()
 api_router.include_router(plants_router, prefix="/plants", tags=["plants"])
@@ -27,4 +28,5 @@ __all__ = [
     "calc_scenarios",
     "calc_comparisons",
     "comments",
+    "auth",
 ]

@@ -16,6 +16,7 @@ class CalcScenario(Base):
     description = Column(Text, nullable=True)
     default_input_json = Column(JSON, nullable=False)
     is_baseline = Column(Boolean, nullable=False, default=False, server_default="0")
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

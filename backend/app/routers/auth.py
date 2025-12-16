@@ -1,6 +1,4 @@
 import uuid
-from datetime import datetime, timezone
-from typing import List
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,47 +7,25 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
-from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
-from app.core.settings import settings
+from app.core.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 from app.db import get_db
 from app.schemas import (
-    CalcRunListItem,
     ChangePasswordRequest,
-    CommentRead,
-    FavoriteCreate,
-    FavoriteRead,
-    CalcScenarioRead,
-    ProjectRead,
     Token,
     UserActivitySummary,
     UserCreate,
-    UserDashboardResponse,
     UserLogin,
     UserRead,
 )
-from app.schemas.user import UserFavoritesGrouped
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-me_router = APIRouter(prefix="/api/me", tags=["me"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
-ANONYMOUS_EMAIL = "anonymous@grindlab.local"
-ANONYMOUS_ID = uuid.UUID(int=0)
-
-
-class AnonymousUser:
-    def __init__(self):
-        self.id = ANONYMOUS_ID
-        self.email = ANONYMOUS_EMAIL
-        self.full_name = "Anonymous"
-        self.hashed_password = ""
-        self.is_active = True
-        self.is_superuser = False
-        self.is_anonymous = True
-        self.created_at = datetime.now(timezone.utc)
-
-
-ANONYMOUS_USER = AnonymousUser()
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -91,18 +67,9 @@ def login_for_access_token(
 
 
 async def get_current_user(
-    token: str | None = Depends(oauth2_scheme_optional),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> models.User:
-    if not settings.auth_enabled:
-        return ANONYMOUS_USER
-
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -124,104 +91,29 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    token: str | None = Depends(oauth2_scheme_optional),
+    token: str = Depends(oauth2_scheme_optional),
     db: Session = Depends(get_db),
 ) -> models.User | None:
-    if not settings.auth_enabled:
-        return ANONYMOUS_USER
-
     if not token:
-        return ANONYMOUS_USER
+        return None
     try:
-        return await get_current_user(token=token, db=db)
-    except HTTPException as exc:
-        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
-            return ANONYMOUS_USER
-        raise
+        payload = decode_access_token(token)
+        user_id: str | None = payload.get("sub")
+        if user_id is None:
+            return None
+        user_uuid = uuid.UUID(user_id)
+    except (jwt.PyJWTError, ValueError):
+        return None
+
+    user = db.get(models.User, user_uuid)
+    if user is None or not user.is_active:
+        return None
+    return user
 
 
 @router.get("/me", response_model=UserRead)
 async def read_users_me(current_user: models.User = Depends(get_current_user)) -> UserRead:
     return UserRead.model_validate(current_user, from_attributes=True)
-
-
-def _calculate_user_summary(db: Session, current_user: models.User) -> UserActivitySummary:
-    if getattr(current_user, "is_anonymous", False):
-        anon_user = UserRead(
-            id=current_user.id,
-            email=current_user.email,
-            full_name=current_user.full_name,
-            is_active=True,
-            is_superuser=False,
-            created_at=current_user.created_at,
-        )
-        return UserActivitySummary(
-            user=anon_user,
-            scenarios_total=0,
-            calc_runs_total=0,
-            calc_runs_by_status={},
-            comments_total=0,
-            last_activity_at=None,
-        )
-
-    if hasattr(models.CalcScenario, "created_by_user_id"):
-        scenarios_total = (
-            db.query(func.count(models.CalcScenario.id))
-            .filter(models.CalcScenario.created_by_user_id == current_user.id)
-            .scalar()
-        ) or 0
-    else:
-        scenarios_total = 0
-
-    if hasattr(models.CalcRun, "started_by_user_id"):
-        calc_runs_total = (
-            db.query(func.count(models.CalcRun.id))
-            .filter(models.CalcRun.started_by_user_id == current_user.id)
-            .scalar()
-        ) or 0
-    else:
-        calc_runs_total = db.query(func.count(models.CalcRun.id)).scalar() or 0
-
-    status_query = db.query(models.CalcRun.status, func.count(models.CalcRun.id))
-    if hasattr(models.CalcRun, "started_by_user_id"):
-        status_query = status_query.filter(models.CalcRun.started_by_user_id == current_user.id)
-    status_rows = status_query.group_by(models.CalcRun.status).all()
-    calc_runs_by_status = {status: count for status, count in status_rows if status is not None}
-
-    comments_total = (
-        db.query(func.count(models.Comment.id))
-        .filter(models.Comment.author == current_user.email)
-        .scalar()
-    ) or 0
-
-    if hasattr(models.CalcScenario, "created_by_user_id"):
-        scenario_last = (
-            db.query(func.max(models.CalcScenario.created_at))
-            .filter(models.CalcScenario.created_by_user_id == current_user.id)
-            .scalar()
-        )
-    else:
-        scenario_last = None
-    run_last_query = db.query(func.max(models.CalcRun.started_at))
-    if hasattr(models.CalcRun, "started_by_user_id"):
-        run_last_query = run_last_query.filter(models.CalcRun.started_by_user_id == current_user.id)
-    run_last = run_last_query.scalar()
-    comment_last = (
-        db.query(func.max(models.Comment.created_at))
-        .filter(models.Comment.author == current_user.email)
-        .scalar()
-    )
-    last_candidates = [dt for dt in (scenario_last, run_last, comment_last) if dt is not None]
-    last_activity_at = max(last_candidates) if last_candidates else None
-
-    return UserActivitySummary(
-        user=UserRead.model_validate(current_user, from_attributes=True),
-        scenarios_total=scenarios_total,
-        calc_runs_total=calc_runs_total,
-        calc_runs_by_status=calc_runs_by_status,
-        comments_total=comments_total,
-        last_activity_at=last_activity_at,
-    )
 
 
 @router.post("/change-password")
@@ -244,198 +136,55 @@ def get_me_summary(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> UserActivitySummary:
-    return _calculate_user_summary(db, current_user)
+    scenarios_total = (
+        db.query(func.count(models.CalcScenario.id))
+        .filter(models.CalcScenario.created_by_user_id == current_user.id)
+        .scalar()
+    ) or 0
 
+    calc_runs_total = (
+        db.query(func.count(models.CalcRun.id))
+        .filter(models.CalcRun.started_by_user_id == current_user.id)
+        .scalar()
+    ) or 0
 
-RECENT_RUNS_LIMIT = 10
-RECENT_COMMENTS_LIMIT = 10
-VALID_FAVORITE_TYPES = {"project", "scenario", "calc_run"}
-
-
-@router.get("/me/favorites", response_model=List[FavoriteRead])
-def get_my_favorites(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> List[FavoriteRead]:
-    favorites = (
-        db.query(models.UserFavorite)
-        .filter(models.UserFavorite.user_id == current_user.id)
-        .order_by(models.UserFavorite.created_at.desc())
+    status_rows = (
+        db.query(models.CalcRun.status, func.count(models.CalcRun.id))
+        .filter(models.CalcRun.started_by_user_id == current_user.id)
+        .group_by(models.CalcRun.status)
         .all()
     )
-    return [FavoriteRead.model_validate(fav, from_attributes=True) for fav in favorites]
+    calc_runs_by_status = {status: count for status, count in status_rows if status is not None}
 
-
-@router.post("/me/favorites", response_model=FavoriteRead, status_code=status.HTTP_201_CREATED)
-def add_favorite(
-    payload: FavoriteCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> FavoriteRead:
-    if payload.entity_type not in VALID_FAVORITE_TYPES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported entity_type")
-
-    if payload.entity_type == "project":
-        entity = db.get(models.Project, payload.entity_id)
-        if entity is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    elif payload.entity_type == "scenario":
-        entity = db.get(models.CalcScenario, payload.entity_id)
-        if entity is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scenario not found")
-    elif payload.entity_type == "calc_run":
-        entity = db.get(models.CalcRun, payload.entity_id)
-        if entity is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calc run not found")
-
-    existing = (
-        db.query(models.UserFavorite)
-        .filter(
-            models.UserFavorite.user_id == current_user.id,
-            models.UserFavorite.entity_type == payload.entity_type,
-            models.UserFavorite.entity_id == payload.entity_id,
-        )
-        .first()
-    )
-    if existing:
-        return FavoriteRead.model_validate(existing, from_attributes=True)
-
-    favorite = models.UserFavorite(
-        user_id=current_user.id,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-    )
-    db.add(favorite)
-    db.commit()
-    db.refresh(favorite)
-    return FavoriteRead.model_validate(favorite, from_attributes=True)
-
-
-@router.delete("/me/favorites/{favorite_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_favorite(
-    favorite_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> None:
-    favorite = (
-        db.query(models.UserFavorite)
-        .filter(models.UserFavorite.id == favorite_id, models.UserFavorite.user_id == current_user.id)
-        .first()
-    )
-    if favorite is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found")
-
-    db.delete(favorite)
-    db.commit()
-    return None
-
-
-@router.get("/me/dashboard", response_model=UserDashboardResponse)
-def get_me_dashboard(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> UserDashboardResponse:
-    if getattr(current_user, "is_anonymous", False):
-        anon_user = UserRead(
-            id=current_user.id,
-            email=current_user.email,
-            full_name=current_user.full_name,
-            is_active=True,
-            is_superuser=False,
-            created_at=current_user.created_at,
-        )
-        empty_summary = _calculate_user_summary(db, current_user)
-        return UserDashboardResponse(
-            user=anon_user,
-            summary=empty_summary,
-            projects=[],
-            member_projects=[],
-            recent_calc_runs=[],
-            recent_comments=[],
-            favorites=UserFavoritesGrouped(),
-        )
-
-    summary = _calculate_user_summary(db, current_user)
-
-    projects_owner = (
-        db.query(models.Project)
-        .filter(models.Project.owner_user_id == current_user.id)
-        .order_by(models.Project.created_at.desc())
-        .all()
-    )
-    projects_owner_dto = [ProjectRead.model_validate(p, from_attributes=True) for p in projects_owner]
-
-    member_links = db.query(models.ProjectMember).filter(models.ProjectMember.user_id == current_user.id).all()
-    member_project_ids = [link.project_id for link in member_links]
-    if member_project_ids:
-        projects_member = (
-            db.query(models.Project)
-            .filter(models.Project.id.in_(member_project_ids), models.Project.owner_user_id != current_user.id)
-            .order_by(models.Project.created_at.desc())
-            .all()
-        )
-    else:
-        projects_member = []
-    projects_member_dto = [ProjectRead.model_validate(p, from_attributes=True) for p in projects_member]
-
-    recent_runs_query = db.query(models.CalcRun)
-    if hasattr(models.CalcRun, "started_by_user_id"):
-        recent_runs_query = recent_runs_query.filter(models.CalcRun.started_by_user_id == current_user.id)
-    recent_runs = (
-        recent_runs_query.order_by(models.CalcRun.started_at.desc().nullslast())
-        .limit(RECENT_RUNS_LIMIT)
-        .all()
-    )
-    recent_runs_dto = [CalcRunListItem.model_validate(r, from_attributes=True) for r in recent_runs]
-
-    recent_comments = (
-        db.query(models.Comment)
+    comments_total = (
+        db.query(func.count(models.Comment.id))
         .filter(models.Comment.author == current_user.email)
-        .order_by(models.Comment.created_at.desc())
-        .limit(RECENT_COMMENTS_LIMIT)
-        .all()
+        .scalar()
+    ) or 0
+
+    scenario_last = (
+        db.query(func.max(models.CalcScenario.created_at))
+        .filter(models.CalcScenario.created_by_user_id == current_user.id)
+        .scalar()
     )
-    recent_comments_dto = [CommentRead.model_validate(c, from_attributes=True) for c in recent_comments]
-
-    favorites = db.query(models.UserFavorite).filter(models.UserFavorite.user_id == current_user.id).all()
-    project_ids = [fav.entity_id for fav in favorites if fav.entity_type == "project"]
-    scenario_ids = [fav.entity_id for fav in favorites if fav.entity_type == "scenario"]
-    run_ids = [fav.entity_id for fav in favorites if fav.entity_type == "calc_run"]
-
-    if project_ids:
-        favorite_projects = db.query(models.Project).filter(models.Project.id.in_(project_ids)).all()
-    else:
-        favorite_projects = []
-    if scenario_ids:
-        favorite_scenarios = db.query(models.CalcScenario).filter(models.CalcScenario.id.in_(scenario_ids)).all()
-    else:
-        favorite_scenarios = []
-    if run_ids:
-        favorite_runs = db.query(models.CalcRun).filter(models.CalcRun.id.in_(run_ids)).all()
-    else:
-        favorite_runs = []
-
-    favorites_grouped = UserFavoritesGrouped(
-        projects=[ProjectRead.model_validate(p, from_attributes=True) for p in favorite_projects],
-        scenarios=[CalcScenarioRead.model_validate(s, from_attributes=True) for s in favorite_scenarios],
-        calc_runs=[CalcRunListItem.model_validate(r, from_attributes=True) for r in favorite_runs],
+    run_last = (
+        db.query(func.max(models.CalcRun.started_at))
+        .filter(models.CalcRun.started_by_user_id == current_user.id)
+        .scalar()
     )
+    comment_last = (
+        db.query(func.max(models.Comment.created_at))
+        .filter(models.Comment.author == current_user.email)
+        .scalar()
+    )
+    last_candidates = [dt for dt in (scenario_last, run_last, comment_last) if dt is not None]
+    last_activity_at = max(last_candidates) if last_candidates else None
 
-    return UserDashboardResponse(
+    return UserActivitySummary(
         user=UserRead.model_validate(current_user, from_attributes=True),
-        summary=summary,
-        projects=projects_owner_dto,
-        member_projects=projects_member_dto,
-        recent_calc_runs=recent_runs_dto,
-        recent_comments=recent_comments_dto,
-        favorites=favorites_grouped,
+        scenarios_total=scenarios_total,
+        calc_runs_total=calc_runs_total,
+        calc_runs_by_status=calc_runs_by_status,
+        comments_total=comments_total,
+        last_activity_at=last_activity_at,
     )
-
-
-@me_router.get("/dashboard", response_model=UserDashboardResponse)
-def get_me_dashboard_public(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> UserDashboardResponse:
-    # Reuse the same logic but under the public /api/me prefix expected by the UI
-    return get_me_dashboard(db=db, current_user=current_user)

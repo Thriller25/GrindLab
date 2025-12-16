@@ -86,3 +86,85 @@ def test_create_comment_invalid_entity(client: TestClient):
     }
     resp = client.post("/api/comments", json=payload)
     assert resp.status_code == 404
+
+
+def _register_and_token(client: TestClient, email: str, password: str) -> str:
+    resp = client.post("/api/auth/register", json={"email": email, "full_name": "User", "password": password})
+    assert resp.status_code in (200, 201)
+    token_resp = client.post(
+        "/api/auth/token",
+        data={"username": email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert token_resp.status_code == 200
+    return token_resp.json()["access_token"]
+
+
+def test_add_comment_to_run_as_authenticated_user(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    run_id = _create_run(client, flowsheet_version_id)
+
+    email = "commenter@example.com"
+    access_token = _register_and_token(client, email, "secret")
+
+    resp = client.post(
+        f"/api/calc-runs/{run_id}/comments/me",
+        json={"text": "My note"},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert resp.status_code in (200, 201)
+    body = resp.json()
+    assert body["entity_type"] == "calc_run"
+    assert body["entity_id"] == run_id
+    assert body["author"] == email
+    assert body["text"] == "My note"
+
+
+def test_add_comment_to_run_me_unauthorized(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    run_id = _create_run(client, flowsheet_version_id)
+
+    resp = client.post(
+        f"/api/calc-runs/{run_id}/comments/me",
+        json={"text": "My note"},
+    )
+    assert resp.status_code == 401
+
+
+def test_add_comment_to_scenario_as_authenticated_user(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    scenario_id = _create_scenario(client, flowsheet_version_id)
+
+    email = "scenario@example.com"
+    access_token = _register_and_token(client, email, "secret")
+
+    resp = client.post(
+        f"/api/calc-scenarios/{scenario_id}/comments/me",
+        json={"text": "Scenario note"},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert resp.status_code in (200, 201)
+    body = resp.json()
+    assert body["entity_type"] == "scenario"
+    assert body["entity_id"] == scenario_id
+    assert body["author"] == email
+    assert body["text"] == "Scenario note"
+
+
+def test_add_comment_to_scenario_me_unauthorized(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    scenario_id = _create_scenario(client, flowsheet_version_id)
+
+    resp = client.post(
+        f"/api/calc-scenarios/{scenario_id}/comments/me",
+        json={"text": "Scenario note"},
+    )
+    assert resp.status_code == 401
