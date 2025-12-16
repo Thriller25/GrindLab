@@ -82,3 +82,22 @@ export async function fetchDashboard(): Promise<DashboardResponse> {
   const resp = await api.get<DashboardResponse>("/api/me/dashboard");
   return resp.data;
 }
+
+export type ProjectDTO = {
+  id: number;
+  name: string;
+  description?: string | null;
+  owner_user_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export async function fetchMyProjects(): Promise<ProjectDTO[]> {
+  const resp = await api.get<ProjectDTO[]>("/api/projects/my");
+  return resp.data;
+}
+
+export async function seedDemoProject(): Promise<ProjectDTO> {
+  const resp = await api.post<ProjectDTO>("/api/projects/demo-seed");
+  return resp.data;
+}

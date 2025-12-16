@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchDashboard, getToken, DashboardResponse, DashboardCalcRunSummary } from "../api/client";
+import {
+  fetchDashboard,
+  fetchMyProjects,
+  seedDemoProject,
+  getToken,
+  DashboardResponse,
+  DashboardCalcRunSummary,
+  ProjectDTO,
+} from "../api/client";
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "Дата не указана";
@@ -34,6 +42,10 @@ export const HomePage = () => {
   const [dashboard, setDashboard] = useState<DashboardResponse>(emptyDashboard);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectDTO[]>([]);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [isProjectsLoading, setIsProjectsLoading] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
 
   const loadDashboard = () => {
     setIsLoading(true);
@@ -47,6 +59,18 @@ export const HomePage = () => {
       .finally(() => setIsLoading(false));
   };
 
+  const loadProjects = () => {
+    setIsProjectsLoading(true);
+    setProjectsError(null);
+    fetchMyProjects()
+      .then((data) => setProjects(data ?? []))
+      .catch(() => {
+        setProjectsError("Не удалось загрузить список проектов");
+        setProjects([]);
+      })
+      .finally(() => setIsProjectsLoading(false));
+  };
+
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -54,12 +78,25 @@ export const HomePage = () => {
       return;
     }
     loadDashboard();
+    loadProjects();
   }, [navigate]);
 
   const runs: DashboardCalcRunSummary[] = useMemo(
     () => dashboard?.recent_calc_runs ?? [],
     [dashboard?.recent_calc_runs],
   );
+
+  const handleSeedProject = async () => {
+    setIsSeeding(true);
+    try {
+      await seedDemoProject();
+      loadProjects();
+    } catch (e) {
+      setProjectsError("Не удалось создать демо-проект");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   return (
     <div className="page">
@@ -93,6 +130,39 @@ export const HomePage = () => {
             </button>
           </div>
         )}
+
+        <section className="section">
+          <div className="section-heading">
+            <h2>Проекты</h2>
+            <p className="section-subtitle">Мои проекты</p>
+          </div>
+          {isProjectsLoading && <div className="muted">Загружаем проекты…</div>}
+          {projectsError && (
+            <div className="general-error">
+              {projectsError}{" "}
+              <button className="btn secondary" onClick={loadProjects}>
+                Повторить
+              </button>
+            </div>
+          )}
+          {projects.length ? (
+            <ul className="projects-list">
+              {projects.slice(0, 5).map((p) => (
+                <li key={p.id} className="project-item">
+                  <div className="project-name">{p.name}</div>
+                  {p.updated_at && <div className="project-updated">Обновлён: {formatDateTime(p.updated_at)}</div>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="empty-state">
+              <div>Проектов пока нет.</div>
+              <button className="btn" onClick={handleSeedProject} disabled={isSeeding}>
+                {isSeeding ? "Создаём..." : "Создать демо-проект"}
+              </button>
+            </div>
+          )}
+        </section>
 
         <section className="section">
           <div className="kpi-grid">
