@@ -10,6 +10,7 @@ from . import calc_scenarios
 from . import calc_comparisons
 from . import comments
 from . import me
+from . import projects
 from . import auth
 
 api_router = APIRouter()
@@ -30,5 +31,6 @@ __all__ = [
     "calc_comparisons",
     "comments",
     "me",
+    "projects",
     "auth",
 ]
