@@ -13,9 +13,25 @@ const formatDateTime = (value?: string | null) => {
   });
 };
 
+const emptyDashboard: DashboardResponse = {
+  user: {},
+  summary: {
+    calc_runs_total: 0,
+    scenarios_total: 0,
+    comments_total: 0,
+    projects_total: 0,
+    calc_runs_by_status: {},
+  },
+  projects: [],
+  member_projects: [],
+  recent_calc_runs: [],
+  recent_comments: [],
+  favorites: { projects: [], scenarios: [], calc_runs: [] },
+};
+
 export const HomePage = () => {
   const navigate = useNavigate();
-  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardResponse>(emptyDashboard);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,8 +39,11 @@ export const HomePage = () => {
     setIsLoading(true);
     setError(null);
     fetchDashboard()
-      .then((data) => setDashboard(data))
-      .catch(() => setError("Не удалось загрузить дашборд"))
+      .then((data) => setDashboard({ ...emptyDashboard, ...data }))
+      .catch(() => {
+        setError("Не удалось загрузить дашборд");
+        setDashboard(emptyDashboard);
+      })
       .finally(() => setIsLoading(false));
   };
 
@@ -41,24 +60,6 @@ export const HomePage = () => {
     () => dashboard?.recent_calc_runs ?? [],
     [dashboard?.recent_calc_runs],
   );
-
-  if (isLoading && !dashboard) {
-    return (
-      <div className="page">
-        <div className="card">Загрузка...</div>
-      </div>
-    );
-  }
-
-  if (error && !dashboard) {
-    return (
-      <div className="page">
-        <div className="card error">{error}</div>
-      </div>
-    );
-  }
-
-  if (!dashboard) return null;
 
   return (
     <div className="page">
