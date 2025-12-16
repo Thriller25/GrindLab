@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, JSON, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -18,6 +18,7 @@ class CalcRun(Base):
     scenario_name = Column(String(255), nullable=True, default=None)
     comment = Column(Text, nullable=True, default=None)
     started_by_user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("project.id"), nullable=True)
     status = Column(String(32), nullable=False, default="pending")
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
@@ -30,3 +31,4 @@ class CalcRun(Base):
     flowsheet_version = relationship("FlowsheetVersion", back_populates="calc_runs")
     scenario = relationship("CalcScenario", back_populates="calc_runs")
     started_by_user = relationship(User, lazy="joined")
+    project = relationship("Project", back_populates="calc_runs")

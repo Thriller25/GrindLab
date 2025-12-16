@@ -41,3 +41,4 @@ Frontend: <краткое описание изменений или "нет и�
   - `python -m app.scripts.seed_demo`
 - Проверка через API: открыть http://127.0.0.1:8000/docs и вызвать `GET /api/me/dashboard` (AUTH_ENABLED=false) — должны быть демо-проекты и расчёты.
 - Проверка через UI: запустить фронт (`npm run dev` в `frontend/`) и убедиться, что дашборд и список расчётов заполнены демо-данными.
+- Dev DB refresh after schema change (e.g. added calc_run.project_id): delete local backend/grindlab.db and rerun python -m app.main from backend/ to recreate tables (Base.metadata.create_all).
