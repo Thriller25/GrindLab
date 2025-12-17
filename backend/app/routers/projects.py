@@ -670,9 +670,11 @@ RECENT_COMMENTS_LIMIT = 10
 def get_project_dashboard(
     project_id: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> ProjectDashboardResponse:
     project = _ensure_project_exists_and_get(db, project_id)
+    if current_user is None and project.owner_user_id is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Login required")
     links = (
         db.query(models.ProjectFlowsheetVersion)
         .filter(models.ProjectFlowsheetVersion.project_id == project.id)

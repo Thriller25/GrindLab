@@ -232,6 +232,37 @@ def test_project_summary_with_activity(client: TestClient):
     )
     assert comment_resp2.status_code in (200, 201)
 
+    grind_payload = {
+        "model_version": "grind_mvp_v1",
+        "plant_id": plant_id,
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "scenario_name": "Project run",
+        "feed": {"tonnage_tph": 500, "p80_mm": 12, "density_t_per_m3": 2.7},
+        "mill": {
+            "type": "SAG",
+            "power_installed_kw": 8000,
+            "power_draw_kw": 7200,
+            "ball_charge_percent": 12,
+            "speed_percent_critical": 75,
+        },
+        "classifier": {
+            "type": "cyclone",
+            "cut_size_p80_mm": 0.18,
+            "circulating_load_percent": 250,
+        },
+        "options": {"use_baseline_run_id": None},
+    }
+    grind_resp = client.post("/api/calc/grind-mvp-runs", json=grind_payload, headers=headers)
+    assert grind_resp.status_code == 200
+    grind_run_id = grind_resp.json()["calc_run_id"]
+    grind_comment_resp = client.post(
+        f"/api/calc-runs/{grind_run_id}/comments/me",
+        json={"text": "Project run comment"},
+        headers=headers,
+    )
+    assert grind_comment_resp.status_code in (200, 201)
+
     summary_resp = client.get(f"/api/projects/{project_id}/summary", headers=headers)
     assert summary_resp.status_code == 200
     summary = summary_resp.json()
@@ -523,6 +554,30 @@ def test_project_dashboard_with_data(client: TestClient):
     )
     assert comment_resp2.status_code in (200, 201)
 
+    grind_payload = {
+        "model_version": "grind_mvp_v1",
+        "plant_id": plant_id,
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "scenario_name": "Dash project run",
+        "feed": {"tonnage_tph": 520, "p80_mm": 12, "density_t_per_m3": 2.7},
+        "mill": {
+            "type": "SAG",
+            "power_installed_kw": 8200,
+            "power_draw_kw": 7300,
+            "ball_charge_percent": 12,
+            "speed_percent_critical": 75,
+        },
+        "classifier": {
+            "type": "cyclone",
+            "cut_size_p80_mm": 0.18,
+            "circulating_load_percent": 250,
+        },
+        "options": {"use_baseline_run_id": None},
+    }
+    grind_resp = client.post("/api/calc/grind-mvp-runs", json=grind_payload, headers=headers)
+    assert grind_resp.status_code == 200
+
     resp = client.get(f"/api/projects/{project_id}/dashboard", headers=headers)
     assert resp.status_code == 200
     body = resp.json()
@@ -570,7 +625,43 @@ def test_project_dashboard_access_for_member(client: TestClient):
 
 def test_project_dashboard_unauthorized(client: TestClient):
     resp = client.get("/api/projects/00000000-0000-0000-0000-000000000000/dashboard")
-    assert resp.status_code == 401
+    assert resp.status_code in (401, 404)
+
+
+def test_project_dashboard_public_allows_anonymous(client: TestClient):
+    seed_resp = client.post("/api/projects/demo-seed")
+    assert seed_resp.status_code == 200
+
+    projects_resp = client.get("/api/projects/my")
+    assert projects_resp.status_code == 200
+    items = projects_resp.json().get("items", [])
+    assert items
+    project_id = items[0]["id"]
+    assert items[0]["owner_user_id"] is None
+
+    dashboard_resp = client.get(f"/api/projects/{project_id}/dashboard")
+    assert dashboard_resp.status_code == 200
+    dashboard = dashboard_resp.json()
+    assert "project" in dashboard
+    assert "summary" in dashboard
+    assert "recent_calc_runs" in dashboard
+
+
+def test_project_dashboard_private_requires_login(client: TestClient):
+    user_id, token = _register_and_token(client, "private@example.com", "secret123")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    project_resp = client.post(
+        "/api/projects",
+        json={"name": "Private Project", "description": None},
+        headers=headers,
+    )
+    assert project_resp.status_code == 201
+    project_id = project_resp.json()["id"]
+    assert project_resp.json()["owner_user_id"] == user_id
+
+    dashboard_resp = client.get(f"/api/projects/{project_id}/dashboard")
+    assert dashboard_resp.status_code in (401, 403)
 
 
 def _make_calc_run(

@@ -43,7 +43,10 @@ def calc_flowsheet(
         )
         return run_flowsheet_calculation(db=db, payload=payload_with_user)
     except CalculationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["body", "input_json"], "msg": str(exc), "type": "value_error"}],
+        )
     except HTTPException:
         raise
     except Exception:

@@ -71,6 +71,8 @@ def validate_input_json(input_json: Any) -> CalcInput:
     else:
         raise CalculationError("input_json is required and must be an object")
 
+    if model.feed_tph is None or model.target_p80_microns is None:
+        raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
     if model.feed_tph <= 0 or model.target_p80_microns <= 0:
         raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
 
