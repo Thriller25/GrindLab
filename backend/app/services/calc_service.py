@@ -176,6 +176,7 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
         scenario_id=payload.scenario_id,
         scenario_name=payload.scenario_name,
         comment=payload.comment,
+        started_by_user_id=payload.started_by_user_id,
         status=CalcRunStatus.PENDING.value,
         started_at=started_at,
         input_json=validated_input.model_dump(),
@@ -288,7 +289,9 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
     return CalcRunRead.model_validate(calc_run, from_attributes=True)
 
 
-def run_flowsheet_calculation_by_scenario(db: Session, scenario_id: uuid.UUID) -> CalcRunRead:
+def run_flowsheet_calculation_by_scenario(
+    db: Session, scenario_id: uuid.UUID, started_by_user_id: uuid.UUID | None = None
+) -> CalcRunRead:
     """
     Run calculation using stored CalcScenario defaults.
     """
@@ -299,6 +302,7 @@ def run_flowsheet_calculation_by_scenario(db: Session, scenario_id: uuid.UUID) -
         scenario_id=scenario.id,
         scenario_name=scenario.name,
         input_json=validated_input,
+        started_by_user_id=started_by_user_id,
     )
     return run_flowsheet_calculation(db=db, payload=payload)
 
