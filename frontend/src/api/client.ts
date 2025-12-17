@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "";
+const API_BASE_URL = rawBaseUrl.trim() || "http://127.0.0.1:8000";
+console.info(`[GrindLab] API base URL: ${API_BASE_URL}`);
 const TOKEN_KEY = "grindlab_token";
 
 export function getApiBaseUrl(): string {

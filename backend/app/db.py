@@ -1,13 +1,38 @@
-﻿# backend/app/db.py
+# backend/app/db.py
 
-import os
+from pathlib import Path
+from typing import Tuple
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.core.settings import settings  # новый импорт
 
-# Берём URL базы из настроек
-DB_URL = settings.db_url
+
+def _normalize_db_url(raw_url: str) -> Tuple[str, str | None]:
+    """
+    Ensure sqlite URLs are absolute so we don't accidentally create multiple files
+    when running commands from different working directories.
+    """
+    url = make_url(raw_url)
+    resolved_path: str | None = None
+
+    if url.drivername.startswith("sqlite"):
+        db_path = url.database or "grindlab.db"
+        path = Path(db_path)
+        if not path.is_absolute():
+            # repo root: backend/app/db.py -> ../.. is repo root
+            base_dir = Path(__file__).resolve().parents[2]
+            path = (base_dir / path).resolve()
+        resolved_path = str(path)
+        url = url.set(database=resolved_path)
+
+    return str(url), resolved_path
+
+
+# Берём URL базы из настроек и фиксируем путь
+DB_URL, SQLITE_PATH = _normalize_db_url(settings.db_url)
 
 connect_args = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
 
@@ -22,3 +47,8 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_db_path() -> str | None:
+    """Return the resolved sqlite file path (if using sqlite)."""
+    return SQLITE_PATH

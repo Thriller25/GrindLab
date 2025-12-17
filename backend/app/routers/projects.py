@@ -258,10 +258,12 @@ def _build_project_detail(db: Session, project: models.Project) -> ProjectDetail
     )
 
 
-def _check_project_read_access(db: Session, project: models.Project, user: models.User) -> None:
+def _check_project_read_access(db: Session, project: models.Project, user: models.User | None) -> None:
     # Public (ownerless) projects are readable by anyone.
     if project.owner_user_id is None:
         return
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
     if project.owner_user_id == user.id:
         return
     membership = (
@@ -277,12 +279,12 @@ def _check_project_read_access(db: Session, project: models.Project, user: model
 def create_project(
     payload: ProjectCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_optional),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> ProjectRead:
     project = models.Project(
         name=payload.name,
         description=payload.description,
-        owner_user_id=current_user.id,
+        owner_user_id=getattr(current_user, "id", None),
         plant_id=payload.plant_id if payload.plant_id not in ("", None) else None,
     )
     db.add(project)
@@ -350,10 +352,10 @@ def attach_flowsheet_version_to_project(
     project_id: str,
     flowsheet_version_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_optional),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ):
     project = _ensure_project_exists_and_get(db, project_id)
-    if project.owner_user_id != current_user.id:
+    if project.owner_user_id != getattr(current_user, "id", None):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     attach_link_to_project(db, project.id, flowsheet_version_id, project=project)
@@ -369,7 +371,7 @@ def get_latest_grind_mvp_run_for_project_and_version(
     project_id: str,
     flowsheet_version_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_optional),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> GrindMvpRunSummary:
     project = _ensure_project_exists_and_get(db, project_id)
     _check_project_read_access(db, project, current_user)
@@ -390,7 +392,7 @@ def list_grind_mvp_runs_for_project_and_version(
     project_id: str,
     flowsheet_version_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_optional),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> list[GrindMvpRunSummary]:
     project = _ensure_project_exists_and_get(db, project_id)
     _check_project_read_access(db, project, current_user)
@@ -408,10 +410,10 @@ def detach_flowsheet_version_from_project(
     project_id: str,
     flowsheet_version_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_optional),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ):
     project = _ensure_project_exists_and_get(db, project_id)
-    if project.owner_user_id != current_user.id:
+    if project.owner_user_id != getattr(current_user, "id", None):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     link = (

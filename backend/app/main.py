@@ -1,7 +1,9 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db import Base, engine
+from app.core.settings import settings
+from app.db import Base, engine, get_db_path
 from app.routers import (
     api_router,
     calc,
@@ -17,6 +19,7 @@ from app.routers import (
 
 app = FastAPI(title="GrindLab Backend", version="0.1.0")
 
+logger = logging.getLogger("uvicorn.error")
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,7 +41,14 @@ def on_startup() -> None:
     Dev-only DB initialization: create all tables in SQLite if they do not exist yet.
     """
     import app.models  # noqa: F401 - ensure models are imported for metadata
-
+    logger.info("DB url (settings.db_url): %s", settings.db_url)
+    logger.info("DB engine url: %s", engine.url)
+    db_path = get_db_path()
+    if db_path:
+        logger.info("DB sqlite file path: %s", db_path)
+        print(f"[GrindLab] Using sqlite DB at: {db_path}")
+    else:
+        print(f"[GrindLab] Using database URL: {engine.url}")
     Base.metadata.create_all(bind=engine)
 
 

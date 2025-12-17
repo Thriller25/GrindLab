@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends
 

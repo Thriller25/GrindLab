@@ -4,7 +4,6 @@ import {
   fetchDashboard,
   fetchMyProjects,
   seedDemoProject,
-  getToken,
   DashboardResponse,
   DashboardCalcRunSummary,
   ProjectDTO,
@@ -65,23 +64,22 @@ export const HomePage = () => {
     setProjectsError(null);
     fetchMyProjects()
       .then((data) => {
-        setProjects(data?.items ?? []);
-        setProjectsTotal(data?.total ?? 0);
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const total = typeof data?.total === "number" ? data.total : items.length;
+        setProjects(items);
+        setProjectsTotal(total);
       })
       .catch(() => {
         setProjectsError("Не удалось загрузить список проектов");
+        setProjects([]);
+        setProjectsTotal(0);
       })
       .finally(() => setIsProjectsLoading(false));
   };
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      navigate("/login", { replace: true });
-      return;
-    }
     loadDashboard();
     loadProjects();
-  }, [navigate]);
+  }, []);
 
   const runs: DashboardCalcRunSummary[] = useMemo(
     () => dashboard?.recent_calc_runs ?? [],
