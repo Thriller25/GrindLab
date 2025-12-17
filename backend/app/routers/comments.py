@@ -15,12 +15,11 @@ me_router = APIRouter(prefix="/api", tags=["comments"])
 
 
 def _validate_entity(db: Session, entity_type: str, entity_id: uuid.UUID) -> None:
-    entity_id_str = str(entity_id)
     if entity_type == "calc_run":
-        if db.get(models.CalcRun, entity_id_str) is None:
+        if db.get(models.CalcRun, entity_id) is None:
             raise HTTPException(status_code=404, detail=f"CalcRun {entity_id} not found")
     elif entity_type == "scenario":
-        if db.get(models.CalcScenario, entity_id_str) is None:
+        if db.get(models.CalcScenario, entity_id) is None:
             raise HTTPException(status_code=404, detail=f"CalcScenario {entity_id} not found")
     else:
         raise HTTPException(status_code=400, detail="Unsupported entity_type")
@@ -32,7 +31,7 @@ def _create_comment(
     _validate_entity(db, entity_type, entity_id)
     comment = models.Comment(
         entity_type=entity_type,
-        entity_id=str(entity_id),
+        entity_id=entity_id,
         author=payload.author,
         text=payload.text,
     )
@@ -124,7 +123,7 @@ def list_comments_by_entity(
 ) -> CommentListResponse:
     _validate_entity(db, entity_type, entity_id)
     query = db.query(models.Comment).filter(
-        models.Comment.entity_type == entity_type, models.Comment.entity_id == str(entity_id)
+        models.Comment.entity_type == entity_type, models.Comment.entity_id == entity_id
     )
     total = query.with_entities(func.count()).scalar() or 0
     comments = query.order_by(models.Comment.created_at.desc()).offset(offset).limit(limit).all()
@@ -148,7 +147,7 @@ def list_comments_for_scenario(
 
 @router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_comment(comment_id: uuid.UUID, db: Session = Depends(get_db)):
-    comment = db.get(models.Comment, str(comment_id))
+    comment = db.get(models.Comment, comment_id)
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     db.delete(comment)
