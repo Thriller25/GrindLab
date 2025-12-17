@@ -54,7 +54,8 @@ export const HomePage = () => {
       .then((data) => setDashboard({ ...emptyDashboard, ...data }))
       .catch(() => {
         setError("Не удалось загрузить дашборд");
-        setDashboard(emptyDashboard);
+        // Keep the existing dashboard visible so layout stays intact on errors
+        setDashboard((prev) => prev ?? emptyDashboard);
       })
       .finally(() => setIsLoading(false));
   };
@@ -71,8 +72,6 @@ export const HomePage = () => {
       })
       .catch(() => {
         setProjectsError("Не удалось загрузить список проектов");
-        setProjects([]);
-        setProjectsTotal(0);
       })
       .finally(() => setIsProjectsLoading(false));
   };
