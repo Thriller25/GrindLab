@@ -294,11 +294,12 @@ export const CalcRunPage = () => {
     setIsSubmitting(true);
     setResult(null);
     try {
+      const projectIdValue = projectIdParam ? projectIdNumber ?? projectIdParam : null;
       const payload = {
         model_version: "grind_mvp_v1",
         plant_id: plantId.trim(),
         flowsheet_version_id: flowsheetVersionId.trim(),
-        project_id: projectIdNumber ?? null,
+        project_id: projectIdValue,
         scenario_name: form.scenario_name,
         feed: {
           tonnage_tph: Number(form.feed.tonnage_tph),
@@ -323,8 +324,8 @@ export const CalcRunPage = () => {
       setResult(resp.data.result);
       setFieldErrors({});
       setGeneralError(null);
-      if (projectIdNumber !== null) {
-        navigate(`/projects/${projectIdParam}`);
+      if (projectIdValue !== null) {
+        navigate(`/projects/${projectIdValue}?refresh=1`);
         return;
       }
     } catch (error) {
