@@ -379,7 +379,6 @@ def run_grind_mvp_calculation(db: Session, payload: GrindMvpInput) -> dict:
     calc_run = models.CalcRun(
         flowsheet_version_id=flowsheet_version_id,
         scenario_name=payload.scenario_name,
-        baseline_run_id=payload.options.use_baseline_run_id,
         status=CalcRunStatus.PENDING.value,
         started_at=started_at,
         input_json=payload_dict,
