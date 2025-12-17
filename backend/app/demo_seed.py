@@ -3,10 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 import uuid
+import logging
 
 from app import models
 from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
+
+logger = logging.getLogger(__name__)
 
 
 def _get_or_create_demo_user(db) -> models.User:
@@ -167,9 +170,9 @@ def seed_plants_and_flowsheets(db) -> Tuple[Dict[str, models.Plant], Dict[str, m
 
     if created_any:
         db.commit()
-        print("Demo plants, flowsheets, and versions created successfully.")
+        logger.info("Demo plants, flowsheets, and versions created successfully.")
     else:
-        print("Demo plants, flowsheets, and versions already present, skipping.")
+        logger.info("Demo plants, flowsheets, and versions already present, skipping.")
 
     return plants, versions
 
@@ -223,11 +226,11 @@ def seed_projects(db, gold_plant_id: uuid.UUID | None) -> List[models.Project]:
     if created_any or reset_owners:
         db.commit()
         if created_any:
-            print("Demo projects created successfully.")
+            logger.info("Demo projects created successfully.")
         if reset_owners:
-            print("Demo projects owners reset to NULL.")
+            logger.info("Demo projects owners reset to NULL.")
     else:
-        print("Demo projects already present, skipping.")
+        logger.info("Demo projects already present, skipping.")
 
     return projects
 
@@ -253,9 +256,9 @@ def seed_project_flowsheet_links(
             created_any = True
     if created_any:
         db.commit()
-        print("Demo project-flowsheet links created successfully.")
+        logger.info("Demo project-flowsheet links created successfully.")
     else:
-        print("Demo project-flowsheet links already present, skipping.")
+        logger.info("Demo project-flowsheet links already present, skipping.")
 
 
 def _build_demo_input_json(
@@ -362,9 +365,9 @@ def seed_grind_mvp_runs(
 
     if created_any:
         db.commit()
-        print("Demo grind_mvp_v1 runs created successfully.")
+        logger.info("Demo grind_mvp_v1 runs created successfully.")
     else:
-        print("Demo grind_mvp_v1 runs already present, skipping.")
+        logger.info("Demo grind_mvp_v1 runs already present, skipping.")
 
 
 def seed_demo_data() -> None:
@@ -383,9 +386,9 @@ def seed_demo_data() -> None:
             seed_project_flowsheet_links(db, projects, demo_versions)
             seed_grind_mvp_runs(db, projects, demo_versions)
         else:
-            print("Skipping project links and runs seeding because demo data is missing.")
+            logger.info("Skipping project links and runs seeding because demo data is missing.")
 
-        print("Demo data seeded successfully.")
+        logger.info("Demo data seeded successfully.")
     except Exception:
         db.rollback()
         raise

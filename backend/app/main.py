@@ -47,9 +47,9 @@ def on_startup() -> None:
     db_path = get_db_path()
     if db_path:
         logger.info("DB sqlite file path: %s", db_path)
-        print(f"[GrindLab] Using sqlite DB at: {db_path}")
+        logger.info("[GrindLab] Using sqlite DB at: %s", db_path)
     else:
-        print(f"[GrindLab] Using database URL: {engine.url}")
+        logger.info("[GrindLab] Using database URL: %s", engine.url)
     Base.metadata.create_all(bind=engine)
 
 
