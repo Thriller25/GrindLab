@@ -14,6 +14,7 @@ from app.routers import (
     me,
     projects,
     auth,
+    favorites,
 )
 
 
@@ -60,5 +61,6 @@ app.include_router(calc_comparisons.router)
 app.include_router(comments.router)
 app.include_router(comments.me_router)
 app.include_router(me.router)
+app.include_router(favorites.router)
 app.include_router(projects.router)
 app.include_router(auth.router)

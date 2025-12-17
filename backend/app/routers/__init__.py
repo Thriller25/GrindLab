@@ -12,6 +12,7 @@ from . import comments
 from . import me
 from . import projects
 from . import auth
+from . import favorites
 
 api_router = APIRouter()
 api_router.include_router(plants_router, prefix="/plants", tags=["plants"])
@@ -33,4 +34,5 @@ __all__ = [
     "me",
     "projects",
     "auth",
+    "favorites",
 ]
