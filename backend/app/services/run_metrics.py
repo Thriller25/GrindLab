@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any, Dict, Iterable, Optional
 
 from sqlalchemy.orm import Session
@@ -39,7 +40,9 @@ def _sort_runs_by_kpi(runs: Iterable[models.CalcRun]) -> list[models.CalcRun]:
     return sorted(runs, key=key, reverse=True)
 
 
-def find_best_project_run(db: Session, project_id: int, flowsheet_version_id: int) -> Optional[models.CalcRun]:
+def find_best_project_run(
+    db: Session, project_id: int, flowsheet_version_id: uuid.UUID
+) -> Optional[models.CalcRun]:
     runs = (
         db.query(models.CalcRun)
         .filter(
@@ -54,7 +57,9 @@ def find_best_project_run(db: Session, project_id: int, flowsheet_version_id: in
     return _sort_runs_by_kpi(runs)[0]
 
 
-def find_baseline_run_for_version(db: Session, flowsheet_version_id: int) -> Optional[models.CalcRun]:
+def find_baseline_run_for_version(
+    db: Session, flowsheet_version_id: uuid.UUID
+) -> Optional[models.CalcRun]:
     runs = (
         db.query(models.CalcRun)
         .join(models.CalcScenario, models.CalcScenario.id == models.CalcRun.scenario_id)

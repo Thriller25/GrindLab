@@ -66,9 +66,8 @@ def _grind_mvp_summary(run: models.CalcRun) -> GrindMvpRunSummary:
         created_at=run.created_at,
         model_version=result_json.get("model_version") or input_json.get("model_version") or "grind_mvp_v1",
         plant_id=str(input_json.get("plant_id")) if input_json.get("plant_id") is not None else None,
-        flowsheet_version_id=str(input_json.get("flowsheet_version_id"))
-        if input_json.get("flowsheet_version_id") is not None
-        else None,
+        project_id=run.project_id,
+        flowsheet_version_id=str(run.flowsheet_version_id) if run.flowsheet_version_id is not None else None,
         scenario_name=input_json.get("scenario_name"),
         comment=run.comment,
         throughput_tph=kpi.get("throughput_tph") if isinstance(kpi, dict) else None,
@@ -85,9 +84,8 @@ def _grind_mvp_detail(run: models.CalcRun) -> GrindMvpRunDetail:
         created_at=run.created_at,
         model_version=result_json.get("model_version") or input_json.get("model_version") or "grind_mvp_v1",
         plant_id=str(input_json.get("plant_id")) if input_json.get("plant_id") is not None else None,
-        flowsheet_version_id=str(input_json.get("flowsheet_version_id"))
-        if input_json.get("flowsheet_version_id") is not None
-        else None,
+        project_id=run.project_id,
+        flowsheet_version_id=str(run.flowsheet_version_id) if run.flowsheet_version_id is not None else None,
         scenario_name=input_json.get("scenario_name"),
         comment=run.comment,
         input=GrindMvpInput.model_validate(input_json),

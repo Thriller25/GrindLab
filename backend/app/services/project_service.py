@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -10,7 +11,7 @@ from app import models
 def attach_flowsheet_version_to_project(
     db: Session,
     project_id: int,
-    flowsheet_version_id: int,
+    flowsheet_version_id: uuid.UUID,
     *,
     project: Optional[models.Project] = None,
     flowsheet_version: Optional[models.FlowsheetVersion] = None,

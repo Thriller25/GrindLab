@@ -574,7 +574,7 @@ def test_project_dashboard_unauthorized(client: TestClient):
 
 
 def _make_calc_run(
-    flowsheet_version_id: int,
+    flowsheet_version_id,
     project_id: int | None,
     throughput: float,
     p80_mm: float,
@@ -582,38 +582,51 @@ def _make_calc_run(
     circulating_load: float,
     is_baseline: bool = False,
 ) -> str:
-    run_id = str(uuid.uuid4())
+    version_id = uuid.UUID(str(flowsheet_version_id))
+    run_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
-    run = models.CalcRun(
-        id=run_id,
-        flowsheet_version_id=flowsheet_version_id,
-        project_id=project_id,
-        scenario_name="demo",
-        status="success",
-        started_at=now,
-        finished_at=now,
-        baseline_run_id=run_id if is_baseline else None,
-        input_json={
-            "model_version": "grind_mvp_v1",
-            "plant_id": 1,
-            "flowsheet_version_id": flowsheet_version_id,
-            "scenario_name": "demo",
-        },
-        result_json={
-            "model_version": "grind_mvp_v1",
-            "kpi": {
-                "throughput_tph": throughput,
-                "product_p80_mm": p80_mm,
-                "specific_energy_kwh_per_t": specific_energy,
-                "circulating_load_percent": circulating_load,
-                "mill_utilization_percent": 90.0,
-            },
-        },
-    )
     with SessionLocal() as db:
+        scenario_id = None
+        if is_baseline:
+            scenario = models.CalcScenario(
+                flowsheet_version_id=version_id,
+                name="baseline",
+                default_input_json={},
+                is_baseline=True,
+            )
+            db.add(scenario)
+            db.flush()
+            scenario_id = scenario.id
+
+        run = models.CalcRun(
+            id=run_id,
+            flowsheet_version_id=version_id,
+            project_id=project_id,
+            scenario_id=scenario_id,
+            scenario_name="baseline" if is_baseline else "demo",
+            status="success",
+            started_at=now,
+            finished_at=now,
+            input_json={
+                "model_version": "grind_mvp_v1",
+                "plant_id": 1,
+                "flowsheet_version_id": str(version_id),
+                "scenario_name": "demo",
+            },
+            result_json={
+                "model_version": "grind_mvp_v1",
+                "kpi": {
+                    "throughput_tph": throughput,
+                    "product_p80_mm": p80_mm,
+                    "specific_energy_kwh_per_t": specific_energy,
+                    "circulating_load_percent": circulating_load,
+                    "mill_utilization_percent": 90.0,
+                },
+            },
+        )
         db.add(run)
         db.commit()
-    return run_id
+    return str(run_id)
 
 
 def test_project_detail_flowsheet_summaries_with_best_and_diff(client: TestClient):
@@ -639,7 +652,7 @@ def test_project_detail_flowsheet_summaries_with_best_and_diff(client: TestClien
     assert attach_resp.status_code in (200, 201)
 
     baseline_id = _make_calc_run(
-        flowsheet_version_id=int(flowsheet_version_id),
+        flowsheet_version_id=flowsheet_version_id,
         project_id=None,
         throughput=500.0,
         p80_mm=0.2,
@@ -648,7 +661,7 @@ def test_project_detail_flowsheet_summaries_with_best_and_diff(client: TestClien
         is_baseline=True,
     )
     worse_id = _make_calc_run(
-        flowsheet_version_id=int(flowsheet_version_id),
+        flowsheet_version_id=flowsheet_version_id,
         project_id=int(project_id),
         throughput=510.0,
         p80_mm=0.19,
@@ -656,7 +669,7 @@ def test_project_detail_flowsheet_summaries_with_best_and_diff(client: TestClien
         circulating_load=260.0,
     )
     best_id = _make_calc_run(
-        flowsheet_version_id=int(flowsheet_version_id),
+        flowsheet_version_id=flowsheet_version_id,
         project_id=int(project_id),
         throughput=520.0,
         p80_mm=0.18,
@@ -702,7 +715,7 @@ def test_project_detail_flowsheet_summaries_without_project_runs(client: TestCli
     assert attach_resp.status_code in (200, 201)
 
     baseline_id = _make_calc_run(
-        flowsheet_version_id=int(flowsheet_version_id),
+        flowsheet_version_id=flowsheet_version_id,
         project_id=None,
         throughput=480.0,
         p80_mm=0.21,

@@ -47,6 +47,7 @@ class GrindMvpInput(BaseModel):
     model_version: str = Field(default="grind_mvp_v1")
     plant_id: str | int
     flowsheet_version_id: str | int
+    project_id: Optional[int] = None
     scenario_name: Optional[str] = None
     feed: GrindMvpFeed
     mill: GrindMvpMill
@@ -98,6 +99,7 @@ class GrindMvpRunSummary(BaseModel):
     created_at: datetime
     model_version: str
     plant_id: Optional[str] = None
+    project_id: Optional[int] = None
     flowsheet_version_id: Optional[str] = None
     scenario_name: Optional[str] = None
     comment: Optional[str] = None
@@ -114,6 +116,7 @@ class GrindMvpRunDetail(BaseModel):
     created_at: datetime
     model_version: str
     plant_id: Optional[str] = None
+    project_id: Optional[int] = None
     flowsheet_version_id: Optional[str] = None
     scenario_name: Optional[str] = None
     comment: Optional[str] = None

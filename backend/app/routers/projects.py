@@ -76,7 +76,7 @@ def _build_grind_mvp_summary(run: models.CalcRun) -> GrindMvpRunSummary:
         created_at=run.created_at,
         model_version=extract_model_version(run) or "grind_mvp_v1",
         plant_id=str(input_json.get("plant_id")) if input_json.get("plant_id") is not None else None,
-        flowsheet_version_id=run.flowsheet_version_id,
+        flowsheet_version_id=str(run.flowsheet_version_id) if run.flowsheet_version_id is not None else None,
         scenario_name=run.scenario_name or input_json.get("scenario_name"),
         project_id=getattr(run, "project_id", None),
         project_name=getattr(run.project, "name", None) if getattr(run, "project", None) else None,
@@ -102,7 +102,9 @@ def _build_kpi_summary(run: models.CalcRun) -> CalcRunKpiSummary | None:
     )
 
 
-def _find_latest_grind_mvp_run(db: Session, project_id: int, flowsheet_version_id: int) -> models.CalcRun | None:
+def _find_latest_grind_mvp_run(
+    db: Session, project_id: int, flowsheet_version_id: uuid.UUID
+) -> models.CalcRun | None:
     runs = (
         db.query(models.CalcRun)
         .filter(
@@ -122,7 +124,9 @@ def _find_latest_grind_mvp_run(db: Session, project_id: int, flowsheet_version_i
     return None
 
 
-def _find_grind_mvp_runs(db: Session, project_id: int, flowsheet_version_id: int) -> list[models.CalcRun]:
+def _find_grind_mvp_runs(
+    db: Session, project_id: int, flowsheet_version_id: uuid.UUID
+) -> list[models.CalcRun]:
     runs = (
         db.query(models.CalcRun)
         .filter(
@@ -168,7 +172,7 @@ def _load_project_flowsheet_versions(db: Session, project_id: int) -> list[Proje
 
 
 def _get_project_runs(
-    db: Session, project_id: int, flowsheet_version_id: int
+    db: Session, project_id: int, flowsheet_version_id: uuid.UUID
 ) -> list[models.CalcRun]:
     return (
         db.query(models.CalcRun)
@@ -350,7 +354,7 @@ def seed_demo_project(
 )
 def attach_flowsheet_version_to_project(
     project_id: str,
-    flowsheet_version_id: int,
+    flowsheet_version_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
 ):
@@ -369,7 +373,7 @@ def attach_flowsheet_version_to_project(
 )
 def get_latest_grind_mvp_run_for_project_and_version(
     project_id: str,
-    flowsheet_version_id: int,
+    flowsheet_version_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> GrindMvpRunSummary:
@@ -390,7 +394,7 @@ def get_latest_grind_mvp_run_for_project_and_version(
 )
 def list_grind_mvp_runs_for_project_and_version(
     project_id: str,
-    flowsheet_version_id: int,
+    flowsheet_version_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> list[GrindMvpRunSummary]:
@@ -408,7 +412,7 @@ def list_grind_mvp_runs_for_project_and_version(
 )
 def detach_flowsheet_version_from_project(
     project_id: str,
-    flowsheet_version_id: int,
+    flowsheet_version_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
 ):
@@ -437,16 +441,12 @@ def get_project_detail(
     current_user: models.User = Depends(get_current_user_optional),
 ) -> ProjectDetail:
     project = _ensure_project_exists_and_get(db, project_id)
-    # Публичные проекты (owner_user_id is None) доступны без авторизации,
-    # приватные — только владельцу.
-    if project.owner_user_id is not None:
-        if current_user is None or project.owner_user_id != getattr(current_user, "id", None):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    _check_project_read_access(db, project, current_user)
     return _build_project_detail(db, project)
 
 
 def _calculate_project_summary(
-    db: Session, project: models.Project, flowsheet_version_ids: list[int], current_user: models.User
+    db: Session, project: models.Project, flowsheet_version_ids: list[uuid.UUID], current_user: models.User
 ) -> ProjectSummary:
     _check_project_read_access(db, project, current_user)
     if not flowsheet_version_ids:
