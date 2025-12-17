@@ -1,5 +1,6 @@
 param(
-    [switch]$ResetDb
+    [switch]$ResetDb,
+    [switch]$SmokeOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +29,10 @@ $pythonExe = Get-PythonExe @(
     (Join-Path $RepoRoot ".venv\Scripts\python.exe")
 )
 
+if ($SmokeOnly -and $ResetDb) {
+    throw "-SmokeOnly cannot be combined with -ResetDb. Start services normally, then run -SmokeOnly."
+}
+
 function Stop-Port {
     param([int]$Port)
     Write-Host "[dev] Checking port $Port..."
@@ -46,6 +51,19 @@ function Stop-Port {
             }
         }
     }
+}
+
+if ($SmokeOnly) {
+    Write-Host "[dev] Running smoke checks against existing backend at $BaseUrl ..."
+    Push-Location $BackendDir
+    & $pythonExe "scripts/smoke_api.py" $BaseUrl
+    $smokeExit = $LASTEXITCODE
+    Pop-Location
+    if ($smokeExit -ne 0) {
+        throw "[dev] Smoke checks failed with exit code $smokeExit"
+    }
+    Write-Host "[dev] Smoke checks passed."
+    return
 }
 
 Write-Host "[dev] Stopping existing processes on 8000/5173..."
@@ -96,6 +114,7 @@ if (-not $ready) {
     Pop-Location
     if ($smokeExit -ne 0) {
         Write-Warning "[dev] Smoke checks failed with exit code $smokeExit"
+        $smokeFailed = $true
     }
 }
 
@@ -114,6 +133,10 @@ if (Test-Path $FrontendLog) {
 if (Test-Path $FrontendErrLog) {
     Write-Host "[dev] --- Frontend error log tail ---"
     Get-Content $FrontendErrLog -Tail 10
+}
+
+if ($smokeFailed) {
+    throw "[dev] Smoke checks failed."
 }
 
 Write-Host "[dev] Visit http://localhost:5173 (backend PID $($backendProcess.Id), frontend PID $($frontendProcess.Id))."
