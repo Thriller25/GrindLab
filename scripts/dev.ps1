@@ -14,6 +14,101 @@ $BackendErrLog = Join-Path $env:TEMP "grindlab-backend.err.log"
 $FrontendLog = Join-Path $env:TEMP "grindlab-frontend.log"
 $FrontendErrLog = Join-Path $env:TEMP "grindlab-frontend.err.log"
 
+function Get-PortOwningPid {
+    param([int]$Port)
+    try {
+        $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop | Select-Object -First 1
+        if ($conn -and $conn.OwningProcess) {
+            return [int]$conn.OwningProcess
+        }
+    } catch {
+        # Ignore and fallback to netstat parsing
+    }
+
+    try {
+        $lines = netstat -ano -p tcp | Select-String ":$Port" | Where-Object { $_ -match "LISTENING" }
+        foreach ($line in $lines) {
+            $parts = $line.ToString().Split(" ", [StringSplitOptions]::RemoveEmptyEntries)
+            if ($parts.Count -lt 5) { continue }
+            $pidPart = $parts[-1]
+            if ($pidPart -match '^\d+$' -and $pidPart -ne "0") {
+                return [int]$pidPart
+            }
+        }
+    } catch {
+        # Ignore parsing failures
+    }
+    return $null
+}
+
+function Stop-PidTree {
+    param([int]$ProcessId)
+    if (-not $ProcessId) { return }
+    Write-Host ("[dev] Stopping PID {0} (Stop-Process -Force)..." -f $ProcessId)
+    try {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+    } catch {
+        # Ignore
+    }
+    Write-Host ("[dev] Stopping PID {0} (taskkill /F /T)..." -f $ProcessId)
+    try {
+        & cmd.exe /c "taskkill /F /T /PID $ProcessId" 1>$null 2>$null
+    } catch {
+        # Ignore
+    }
+}
+
+function Stop-PortOwner {
+    param(
+        [int]$Port,
+        [int]$Retries = 5,
+        [int]$DelayMs = 300
+    )
+    Write-Host "[dev] Checking port $Port..."
+    for ($i = 1; $i -le $Retries; $i++) {
+        $portPid = Get-PortOwningPid -Port $Port
+        if (-not $portPid) {
+            Write-Host "[dev] Port $Port is free."
+            return
+        }
+
+        Write-Host ("[dev] Port {0} owned by PID {1} (attempt {2}/{3})" -f $Port, $portPid, $i, $Retries)
+        $proc = Get-Process -Id $portPid -ErrorAction SilentlyContinue
+        if ($proc) {
+            Stop-PidTree -ProcessId $portPid
+        } else {
+            $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$portPid" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId
+            if ($children) {
+                Write-Warning ("[dev] PID {0} not found; stopping child PIDs {1}..." -f $portPid, ($children -join ", "))
+                foreach ($childPid in $children) {
+                    Stop-PidTree -ProcessId $childPid
+                }
+            } else {
+                Write-Warning ("[dev] PID {0} not found in task list; waiting for port release..." -f $portPid)
+            }
+        }
+        Start-Sleep -Milliseconds $DelayMs
+
+        $checkPid = Get-PortOwningPid -Port $Port
+        if (-not $checkPid) {
+            Write-Host "[dev] Port $Port is now free."
+            return
+        }
+    }
+
+    throw ("[dev] Could not free port {0} after {1} attempts. Check `netstat -ano | findstr :{0}`." -f $Port, $Retries)
+}
+
+function Ensure-PortsFree {
+    Write-Host "[dev] Ensuring ports 8000 and 5173 are free..."
+    Stop-PortOwner -Port 8000 -Retries 10 -DelayMs 500
+    try {
+        Stop-PortOwner -Port 5173 -Retries 5 -DelayMs 200
+    } catch {
+        Write-Warning "[dev] Failed to free port 5173: $($_.Exception.Message)"
+    }
+}
+
 function Get-PythonExe {
     param([string[]]$Candidates)
     foreach ($path in $Candidates) {
@@ -33,26 +128,6 @@ if ($SmokeOnly -and $ResetDb) {
     throw "-SmokeOnly cannot be combined with -ResetDb. Start services normally, then run -SmokeOnly."
 }
 
-function Stop-Port {
-    param([int]$Port)
-    Write-Host "[dev] Checking port $Port..."
-    $lines = netstat -ano -p tcp | Select-String ":$Port"
-    foreach ($line in $lines) {
-        $parts = $line.ToString().Split(" ", [StringSplitOptions]::RemoveEmptyEntries)
-        if ($parts.Count -lt 5) { continue }
-        $procId = $parts[-1]
-        if ($procId -eq "0") { continue }
-        if ($procId -match '^\d+$') {
-            try {
-                Stop-Process -Id $procId -Force -ErrorAction Stop
-                Write-Host "[dev] Killed PID $procId on port $Port"
-            } catch {
-                Write-Warning ("[dev] Failed to kill PID {0} on port {1}: {2}" -f $procId, $Port, $_)
-            }
-        }
-    }
-}
-
 if ($SmokeOnly) {
     Write-Host "[dev] Running smoke checks against existing backend at $BaseUrl ..."
     Push-Location $BackendDir
@@ -67,17 +142,31 @@ if ($SmokeOnly) {
 }
 
 Write-Host "[dev] Stopping existing processes on 8000/5173..."
-Stop-Port -Port 8000
-Stop-Port -Port 5173
+Ensure-PortsFree
 
 if ($ResetDb.IsPresent) {
     Write-Host "[dev] Resetting database..."
     Push-Location $BackendDir
-    & $pythonExe "scripts/reset_db.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "reset_db.py failed with exit code $LASTEXITCODE"
-    }
+    $resetOutput = & $pythonExe "scripts/reset_db.py" 2>&1
+    $resetExit = $LASTEXITCODE
     Pop-Location
+    if ($resetExit -ne 0) {
+        Write-Warning $resetOutput
+        if ($resetOutput -match "WinError 32" -or $resetOutput -match "PermissionError") {
+            Write-Warning "[dev] reset_db.py failed due to locked file. Retrying after additional port cleanup..."
+            Stop-PortOwner -Port 8000 -Retries 8 -DelayMs 400
+            Start-Sleep -Milliseconds 500
+            Push-Location $BackendDir
+            $resetOutput = & $pythonExe "scripts/reset_db.py" 2>&1
+            $resetExit = $LASTEXITCODE
+            Pop-Location
+            if ($resetExit -ne 0) {
+                throw "[dev] reset_db.py failed again (possibly locked). Output:`n$resetOutput"
+            }
+        } else {
+            throw "reset_db.py failed with exit code $resetExit`n$resetOutput"
+        }
+    }
 }
 
 Write-Host "[dev] Starting backend (uvicorn --reload)..."
