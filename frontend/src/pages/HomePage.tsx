@@ -43,6 +43,7 @@ export const HomePage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectDTO[]>([]);
+  const [projectsTotal, setProjectsTotal] = useState<number>(0);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -63,14 +64,15 @@ export const HomePage = () => {
     setIsProjectsLoading(true);
     setProjectsError(null);
     fetchMyProjects()
-      .then((data) => setProjects(data ?? []))
+      .then((data) => {
+        setProjects(data?.items ?? []);
+        setProjectsTotal(data?.total ?? 0);
+      })
       .catch(() => {
         setProjectsError("Не удалось загрузить список проектов");
-        setProjects([]);
       })
       .finally(() => setIsProjectsLoading(false));
   };
-
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -134,7 +136,7 @@ export const HomePage = () => {
         <section className="section">
           <div className="section-heading">
             <h2>Проекты</h2>
-            <p className="section-subtitle">Мои проекты</p>
+            <p className="section-subtitle">Мои проекты (всего {projectsTotal})</p>
           </div>
           {isProjectsLoading && <div className="muted">Загружаем проекты…</div>}
           {projectsError && (
