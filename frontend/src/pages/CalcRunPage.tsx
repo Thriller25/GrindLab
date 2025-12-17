@@ -1,6 +1,6 @@
 import axios from "axios";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   api,
   fetchFlowsheetVersionsForPlant,
@@ -98,7 +98,11 @@ function KpiDelta({
 
 export const CalcRunPage = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const fromRun = (location.state as LocationState | undefined)?.fromRun;
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const projectIdParam = searchParams.get("projectId")?.trim() ?? "";
+  const projectIdNumber = projectIdParam && !Number.isNaN(Number(projectIdParam)) ? Number(projectIdParam) : null;
 
   const initialForm = useMemo(() => {
     if (!fromRun) return defaultForm;
@@ -294,6 +298,7 @@ export const CalcRunPage = () => {
         model_version: "grind_mvp_v1",
         plant_id: plantId.trim(),
         flowsheet_version_id: flowsheetVersionId.trim(),
+        project_id: projectIdNumber ?? null,
         scenario_name: form.scenario_name,
         feed: {
           tonnage_tph: Number(form.feed.tonnage_tph),
@@ -318,6 +323,10 @@ export const CalcRunPage = () => {
       setResult(resp.data.result);
       setFieldErrors({});
       setGeneralError(null);
+      if (projectIdNumber !== null) {
+        navigate(`/projects/${projectIdParam}`);
+        return;
+      }
     } catch (error) {
       if (axios.isAxiosError(error) && error.response) {
         const status = error.response.status;
@@ -353,7 +362,10 @@ export const CalcRunPage = () => {
     <div className="page">
       <div className="card">
         <div className="page-header">
-          <h1>Новый расчёт (grind_mvp_v1)</h1>
+          <div>
+            <h1>Новый расчёт (grind_mvp_v1)</h1>
+            {projectIdParam && <div className="muted">Проект: {projectIdParam}</div>}
+          </div>
           <BackToHomeButton />
         </div>
         {dictError && <div className="general-error">{dictError}</div>}

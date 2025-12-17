@@ -130,6 +130,7 @@ export interface GrindMvpRunSummary {
   created_at: string;
   model_version: string;
   plant_id?: string | number | null;
+  project_id?: number | null;
   plant_name?: string | null;
   flowsheet_version_id?: string | number | null;
   flowsheet_name?: string | null;
@@ -146,6 +147,7 @@ export interface GrindMvpInput {
   model_version: string;
   plant_id: string | number;
   flowsheet_version_id: string | number;
+  project_id?: number | null;
   scenario_name?: string | null;
   feed: {
     tonnage_tph: number;
@@ -174,6 +176,7 @@ export interface GrindMvpRunDetail {
   created_at: string;
   model_version: string;
   plant_id?: string | null;
+  project_id?: number | null;
   flowsheet_version_id?: string | null;
   scenario_name?: string | null;
   comment?: string | null;

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import BackToHomeButton from "../components/BackToHomeButton";
 import { fetchProjectDashboard, ProjectDashboardResponse } from "../api/client";
 
 export const ProjectPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
   const [data, setData] = useState<ProjectDashboardResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +39,11 @@ export const ProjectPage = () => {
             {data?.project?.description && <p className="muted">{data.project.description}</p>}
           </div>
           <div className="actions">
+            {projectId && (
+              <button className="btn" type="button" onClick={() => navigate(`/calc-run?projectId=${projectId}`)}>
+                РќРѕРІС‹Р№ СЂР°СЃС‡РµС‚ РґР»СЏ РїСЂРѕРµРєС‚Р°
+              </button>
+            )}
             <BackToHomeButton />
           </div>
         </div>

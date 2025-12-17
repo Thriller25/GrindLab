@@ -469,14 +469,20 @@ def _calculate_project_summary(
 
     calc_runs_total = (
         db.query(func.count(models.CalcRun.id))
-        .filter(models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids))
+        .filter(
+            models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids),
+            models.CalcRun.project_id == project.id,
+        )
         .scalar()
         or 0
     )
 
     status_rows = (
         db.query(models.CalcRun.status, func.count(models.CalcRun.id))
-        .filter(models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids))
+        .filter(
+            models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids),
+            models.CalcRun.project_id == project.id,
+        )
         .group_by(models.CalcRun.status)
         .all()
     )
@@ -491,7 +497,10 @@ def _calculate_project_summary(
     run_ids = [
         row[0]
         for row in db.query(models.CalcRun.id)
-        .filter(models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids))
+        .filter(
+            models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids),
+            models.CalcRun.project_id == project.id,
+        )
         .all()
     ]
 
@@ -696,7 +705,10 @@ def get_project_dashboard(
     if flowsheet_version_ids:
         recent_runs = (
             db.query(models.CalcRun)
-            .filter(models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids))
+            .filter(
+                models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids),
+                models.CalcRun.project_id == project.id,
+            )
             .order_by(models.CalcRun.started_at.desc().nullslast())
             .limit(RECENT_RUNS_LIMIT)
             .all()
@@ -709,7 +721,10 @@ def get_project_dashboard(
     run_ids = [r.id for r in recent_runs] if recent_runs else [
         row[0]
         for row in db.query(models.CalcRun.id)
-        .filter(models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids))
+        .filter(
+            models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids),
+            models.CalcRun.project_id == project.id,
+        )
         .all()
     ] if flowsheet_version_ids else []
 
