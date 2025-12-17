@@ -151,6 +151,15 @@ export const HomePage = () => {
                 <li key={p.id} className="project-item">
                   <div className="project-name">{p.name}</div>
                   {p.updated_at && <div className="project-updated">Обновлён: {formatDateTime(p.updated_at)}</div>}
+                  <div className="project-actions">
+                    <button
+                      className="btn secondary"
+                      type="button"
+                      onClick={() => navigate(`/projects/${p.id}`)}
+                    >
+                      Открыть
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

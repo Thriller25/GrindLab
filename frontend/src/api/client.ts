@@ -246,8 +246,62 @@ export type ProjectListResponse = {
   total: number;
 };
 
+export type ProjectSummary = {
+  project?: ProjectDTO;
+  flowsheet_versions_total?: number;
+  scenarios_total?: number;
+  calc_runs_total?: number;
+  calc_runs_by_status?: Record<string, number>;
+  comments_total?: number;
+  last_activity_at?: string | null;
+};
+
+export type ProjectFlowsheetVersion = {
+  id: string;
+  flowsheet_id?: string;
+  version_label?: string;
+  status?: string;
+  is_active?: boolean;
+  comment?: string | null;
+};
+
+export type ProjectCalcRunListItem = {
+  id: string;
+  flowsheet_version_id?: string;
+  scenario_id?: string | null;
+  scenario_name?: string | null;
+  status?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  comment?: string | null;
+  error_message?: string | null;
+  started_by_user_id?: string | null;
+  is_baseline?: boolean;
+};
+
+export type ProjectComment = {
+  id?: string | number;
+  text?: string | null;
+  created_at?: string | null;
+  author?: { id?: string | number; email?: string; full_name?: string | null };
+};
+
+export type ProjectDashboardResponse = {
+  project: ProjectDTO;
+  summary: ProjectSummary;
+  flowsheet_versions: ProjectFlowsheetVersion[];
+  scenarios: CalcScenario[];
+  recent_calc_runs: ProjectCalcRunListItem[];
+  recent_comments: ProjectComment[];
+};
+
 export async function fetchMyProjects(): Promise<ProjectListResponse> {
   const resp = await api.get<ProjectListResponse>("/api/projects/my");
+  return resp.data;
+}
+
+export async function fetchProjectDashboard(projectId: string | number): Promise<ProjectDashboardResponse> {
+  const resp = await api.get<ProjectDashboardResponse>(`/api/projects/${projectId}/dashboard`);
   return resp.data;
 }
 
