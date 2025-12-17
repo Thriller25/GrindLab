@@ -1,5 +1,3 @@
-import uuid
-
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -77,14 +75,14 @@ async def get_current_user(
     )
     try:
         payload = decode_access_token(token)
-        user_id: str | None = payload.get("sub")
-        if user_id is None:
+        user_id_raw: str | None = payload.get("sub")
+        if user_id_raw is None:
             raise credentials_exception
-        user_uuid = uuid.UUID(user_id)
-    except (jwt.PyJWTError, ValueError):
+        user_id = int(user_id_raw)
+    except (jwt.PyJWTError, ValueError, TypeError):
         raise credentials_exception
 
-    user = db.get(models.User, user_uuid)
+    user = db.get(models.User, user_id)
     if user is None or not user.is_active:
         raise credentials_exception
     return user
@@ -98,14 +96,14 @@ async def get_current_user_optional(
         return None
     try:
         payload = decode_access_token(token)
-        user_id: str | None = payload.get("sub")
-        if user_id is None:
+        user_id_raw: str | None = payload.get("sub")
+        if user_id_raw is None:
             return None
-        user_uuid = uuid.UUID(user_id)
-    except (jwt.PyJWTError, ValueError):
+        user_id = int(user_id_raw)
+    except (jwt.PyJWTError, ValueError, TypeError):
         return None
 
-    user = db.get(models.User, user_uuid)
+    user = db.get(models.User, user_id)
     if user is None or not user.is_active:
         return None
     return user

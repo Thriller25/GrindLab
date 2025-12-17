@@ -30,8 +30,9 @@ def calc_flowsheet(
     """
     try:
         get_flowsheet_version_or_404(db, payload.flowsheet_version_id)
+        started_by_user_id = current_user.id if current_user and isinstance(current_user.id, uuid.UUID) else None
         payload_with_user = payload.model_copy(
-            update={"started_by_user_id": current_user.id if current_user else None}
+            update={"started_by_user_id": started_by_user_id}
         )
         return run_flowsheet_calculation(db=db, payload=payload_with_user)
     except CalculationError as exc:
@@ -53,10 +54,11 @@ def calc_flowsheet_by_scenario(
     Run calculation using default input stored on CalcScenario.
     """
     try:
+        started_by_user_id = current_user.id if current_user and isinstance(current_user.id, uuid.UUID) else None
         return run_flowsheet_calculation_by_scenario(
             db=db,
             scenario_id=scenario_id,
-            started_by_user_id=current_user.id if current_user else None,
+            started_by_user_id=started_by_user_id,
         )
     except CalculationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
