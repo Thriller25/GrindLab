@@ -29,3 +29,4 @@ class Project(Base):
         overlaps="flowsheet_versions,project_links,projects",
     )
     flowsheet_versions = association_proxy("flowsheet_version_links", "flowsheet_version")
+    calc_scenarios = relationship("CalcScenario", back_populates="project")

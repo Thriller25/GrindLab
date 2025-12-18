@@ -58,16 +58,20 @@ def find_best_project_run(
 
 
 def find_baseline_run_for_version(
-    db: Session, flowsheet_version_id: uuid.UUID
+    db: Session, flowsheet_version_id: uuid.UUID, project_id: int | None = None
 ) -> Optional[models.CalcRun]:
-    runs = (
+    query = (
         db.query(models.CalcRun)
         .join(models.CalcScenario, models.CalcScenario.id == models.CalcRun.scenario_id)
         .filter(
             models.CalcRun.flowsheet_version_id == flowsheet_version_id,
             models.CalcScenario.is_baseline.is_(True),
         )
-        .order_by(models.CalcRun.started_at.desc().nullslast(), models.CalcRun.created_at.desc())
-        .all()
     )
+    if project_id is not None:
+        query = query.filter(
+            models.CalcRun.project_id == project_id,
+            models.CalcScenario.project_id == project_id,
+        )
+    runs = query.order_by(models.CalcRun.started_at.desc().nullslast(), models.CalcRun.created_at.desc()).all()
     return runs[0] if runs else None

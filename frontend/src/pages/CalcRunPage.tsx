@@ -6,6 +6,9 @@ import {
   fetchFlowsheetVersionsForPlant,
   fetchPlants,
   fetchCalcScenariosByFlowsheetVersion,
+  fetchCalcScenario,
+  fetchFlowsheetVersion,
+  fetchFlowsheet,
   CalcScenario,
   FlowsheetVersionSummary,
   GrindMvpBaselineComparison,
@@ -102,6 +105,7 @@ export const CalcRunPage = () => {
   const fromRun = (location.state as LocationState | undefined)?.fromRun;
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const projectIdParam = searchParams.get("projectId")?.trim() ?? "";
+  const scenarioIdParam = searchParams.get("scenarioId")?.trim() ?? "";
   const projectIdNumber = projectIdParam && !Number.isNaN(Number(projectIdParam)) ? Number(projectIdParam) : null;
 
   const initialForm = useMemo(() => {
@@ -167,12 +171,34 @@ export const CalcRunPage = () => {
   }, [plantId]);
 
   useEffect(() => {
+    if (!scenarioIdParam) return;
+    fetchCalcScenario(scenarioIdParam)
+      .then(async (scenario) => {
+        setSelectedScenarioId(scenario.id);
+        updateField("scenario_name", scenario.name);
+        setFlowsheetVersionId(String(scenario.flowsheet_version_id));
+        try {
+          const version = await fetchFlowsheetVersion(String(scenario.flowsheet_version_id));
+          if (version.flowsheet_id) {
+            const flowsheet = await fetchFlowsheet(version.flowsheet_id);
+            if (flowsheet.plant_id) {
+              setPlantId(String(flowsheet.plant_id));
+            }
+          }
+        } catch {
+          // ignore lookup errors, user can pick manually
+        }
+      })
+      .catch(() => setScenariosError("Не удалось загрузить сценарий из ссылки"));
+  }, [scenarioIdParam]);
+
+  useEffect(() => {
     setForm((prev) =>
       prev.flowsheet_version_id === flowsheetVersionId
         ? prev
         : { ...prev, flowsheet_version_id: flowsheetVersionId },
     );
-  }, [flowsheetVersionId]);
+  }, [flowsheetVersionId, projectIdParam, scenarioIdParam]);
 
   useEffect(() => {
     setIsPlantsLoading(true);
@@ -194,7 +220,7 @@ export const CalcRunPage = () => {
   useEffect(() => {
     setFlowsheetVersionId("");
     setFlowsheetVersions([]);
-    setSelectedScenarioId("");
+    setSelectedScenarioId((prev) => (scenarioIdParam ? prev : ""));
     setScenarios([]);
     if (!plantId) {
       setDictError(null);
@@ -226,9 +252,15 @@ export const CalcRunPage = () => {
     if (!flowsheetVersionId) return;
     setIsScenariosLoading(true);
     setScenariosError(null);
-    fetchCalcScenariosByFlowsheetVersion(flowsheetVersionId)
+    fetchCalcScenariosByFlowsheetVersion(flowsheetVersionId, projectIdParam || undefined)
       .then((items) => {
         setScenarios(items);
+        const preset = scenarioIdParam ? items.find((s) => s.id === scenarioIdParam) : null;
+        if (preset) {
+          setSelectedScenarioId(preset.id);
+          updateField("scenario_name", preset.name);
+          return;
+        }
         const baseline = items.find((s) => s.is_baseline);
         if (baseline) {
           setSelectedScenarioId(baseline.id);
@@ -295,11 +327,13 @@ export const CalcRunPage = () => {
     setResult(null);
     try {
       const projectIdValue = projectIdParam ? projectIdNumber ?? projectIdParam : null;
+      const scenarioIdValue = selectedScenarioId || scenarioIdParam || null;
       const payload = {
         model_version: "grind_mvp_v1",
         plant_id: plantId.trim(),
         flowsheet_version_id: flowsheetVersionId.trim(),
         project_id: projectIdValue,
+        scenario_id: scenarioIdValue,
         scenario_name: form.scenario_name,
         feed: {
           tonnage_tph: Number(form.feed.tonnage_tph),
@@ -424,7 +458,7 @@ export const CalcRunPage = () => {
                   updateField("scenario_name", scenario.name);
                 }
               }}
-              disabled={!flowsheetVersionId || isScenariosLoading}
+              disabled={!flowsheetVersionId || isScenariosLoading || !!scenarioIdParam}
             >
               <option value="">
                 {isScenariosLoading

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -12,6 +12,7 @@ class CalcScenario(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     flowsheet_version_id = Column(UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id"), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     default_input_json = Column(JSON, nullable=False)
@@ -22,3 +23,4 @@ class CalcScenario(Base):
 
     flowsheet_version = relationship("FlowsheetVersion", back_populates="calc_scenarios")
     calc_runs = relationship("CalcRun", back_populates="scenario")
+    project = relationship("Project", back_populates="calc_scenarios")

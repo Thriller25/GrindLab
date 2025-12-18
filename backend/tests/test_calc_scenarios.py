@@ -2,16 +2,31 @@ import uuid
 
 from fastapi.testclient import TestClient
 
-from .utils import create_flowsheet, create_flowsheet_version, create_plant
+from .utils import (
+    create_flowsheet,
+    create_flowsheet_version,
+    create_plant,
+    create_project,
+    link_project_to_version,
+)
 
 
 def test_calc_scenario_crud(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
 
     payload = {
         "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
         "name": "Base scenario",
         "description": "Default parameters",
         "default_input_json": {"feed_tph": 150, "target_p80_microns": 180},
@@ -32,7 +47,9 @@ def test_calc_scenario_crud(client: TestClient):
     assert fetched["default_input_json"]["target_p80_microns"] == payload["default_input_json"]["target_p80_microns"]
     assert fetched["is_baseline"] is False
 
-    resp = client.get(f"/api/calc-scenarios/by-flowsheet-version/{flowsheet_version_id}")
+    resp = client.get(
+        f"/api/calc-scenarios/by-flowsheet-version/{flowsheet_version_id}", params={"project_id": project_id}
+    )
     assert resp.status_code == 200
     list_body = resp.json()
     assert list_body["total"] >= 1
@@ -53,9 +70,12 @@ def test_calc_run_by_scenario_happy_path(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
 
     scenario_payload = {
         "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
         "name": "Baseline scenario",
         "default_input_json": {"feed_tph": 120, "target_p80_microns": 140},
     }
@@ -69,6 +89,7 @@ def test_calc_run_by_scenario_happy_path(client: TestClient):
     assert body["flowsheet_version_id"] == flowsheet_version_id
     assert body["scenario_name"] == scenario_payload["name"]
     assert body["scenario_id"] == scenario_id
+    assert body["project_id"] == project_id
     assert body["status"] == "success"
     assert body["error_message"] is None
     assert body["input_json"]["feed_tph"] == scenario_payload["default_input_json"]["feed_tph"]
@@ -92,9 +113,12 @@ def test_get_latest_calc_run_by_scenario(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
 
     scenario_payload = {
         "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
         "name": "Baseline scenario",
         "default_input_json": {"feed_tph": 120, "target_p80_microns": 140},
     }
@@ -136,11 +160,13 @@ def test_flowsheet_version_overview_with_scenarios_and_latest_runs(client: TestC
     scenario_payloads = [
         {
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Scenario A",
             "default_input_json": {"feed_tph": 100, "target_p80_microns": 130},
         },
         {
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Scenario B",
             "default_input_json": {"feed_tph": 200, "target_p80_microns": 160},
         },
@@ -186,15 +212,21 @@ def test_clone_flowsheet_version_with_scenarios(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     original_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, original_version_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, original_version_id)
 
     scenario_payloads = [
         {
             "flowsheet_version_id": original_version_id,
+            "project_id": project_id,
             "name": "Original Scenario 1",
             "default_input_json": {"feed_tph": 111, "target_p80_microns": 150},
         },
         {
             "flowsheet_version_id": original_version_id,
+            "project_id": project_id,
             "name": "Original Scenario 2",
             "default_input_json": {"feed_tph": 222, "target_p80_microns": 175},
         },
@@ -232,7 +264,9 @@ def test_clone_flowsheet_version_with_scenarios(client: TestClient):
         assert scenario["default_input_json"]["target_p80_microns"] == payload["default_input_json"]["target_p80_microns"]
         assert scenario["is_baseline"] is False
 
-    scenarios_list_resp = client.get(f"/api/calc-scenarios/by-flowsheet-version/{cloned_version['id']}")
+    scenarios_list_resp = client.get(
+        f"/api/calc-scenarios/by-flowsheet-version/{cloned_version['id']}", params={"project_id": project_id}
+    )
     assert scenarios_list_resp.status_code == 200
     scenarios_list_body = scenarios_list_resp.json()
     assert scenarios_list_body["total"] == len(scenario_payloads)
@@ -251,6 +285,7 @@ def test_clone_flowsheet_version_without_scenarios(client: TestClient):
 
     payload = {
         "flowsheet_version_id": original_version_id,
+        "project_id": project_id,
         "name": "Scenario to skip",
         "default_input_json": {"feed_tph": 300, "target_p80_microns": 190},
     }
@@ -270,7 +305,9 @@ def test_clone_flowsheet_version_without_scenarios(client: TestClient):
     assert cloned_version["version_label"] == clone_payload["new_version_name"]
     assert cloned_scenarios == []
 
-    scenarios_list_resp = client.get(f"/api/calc-scenarios/by-flowsheet-version/{cloned_version['id']}")
+    scenarios_list_resp = client.get(
+        f"/api/calc-scenarios/by-flowsheet-version/{cloned_version['id']}", params={"project_id": project_id}
+    )
     assert scenarios_list_resp.status_code == 200
     scenarios_list_body = scenarios_list_resp.json()
     assert scenarios_list_body["total"] == 0
@@ -284,11 +321,13 @@ def test_set_baseline_scenario_for_flowsheet_version(client: TestClient):
     payloads = [
         {
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Scenario Baseline 1",
             "default_input_json": {"feed_tph": 120, "target_p80_microns": 150},
         },
         {
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Scenario Baseline 2",
             "default_input_json": {"feed_tph": 140, "target_p80_microns": 160},
         },
@@ -334,6 +373,7 @@ def test_unset_baseline_scenario(client: TestClient):
 
     payload = {
         "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
         "name": "Scenario Baseline",
         "default_input_json": {"feed_tph": 180, "target_p80_microns": 200},
     }

@@ -96,6 +96,22 @@ def clone_flowsheet_version(
     db.commit()
     db.refresh(cloned_version)
 
+    source_links = (
+        db.query(models.ProjectFlowsheetVersion)
+        .filter(models.ProjectFlowsheetVersion.flowsheet_version_id == version_id)
+        .all()
+    )
+    for link in source_links:
+        db.add(
+            models.ProjectFlowsheetVersion(
+                project_id=link.project_id,
+                flowsheet_version_id=cloned_version.id,
+            )
+        )
+    if source_links:
+        db.commit()
+        db.refresh(cloned_version)
+
     cloned_scenarios: list[CalcScenarioRead] = []
     if payload.clone_scenarios:
         source_scenarios = (
@@ -106,6 +122,7 @@ def clone_flowsheet_version(
         for scenario in source_scenarios:
             cloned = models.CalcScenario(
                 flowsheet_version_id=cloned_version.id,
+                project_id=scenario.project_id,
                 name=scenario.name,
                 description=scenario.description,
                 default_input_json=scenario.default_input_json,

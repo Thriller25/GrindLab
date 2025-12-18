@@ -15,6 +15,9 @@ def _clear_demo(session):
     ]
 
     if version_ids:
+        session.query(models.ProjectFlowsheetVersion).filter(
+            models.ProjectFlowsheetVersion.flowsheet_version_id.in_(version_ids)
+        ).delete(synchronize_session=False)
         session.query(models.CalcRun).filter(models.CalcRun.flowsheet_version_id.in_(version_ids)).delete(
             synchronize_session=False
         )
@@ -31,6 +34,7 @@ def _clear_demo(session):
     if flowsheet_ids:
         session.query(models.Flowsheet).filter(models.Flowsheet.id.in_(flowsheet_ids)).delete(synchronize_session=False)
 
+    session.query(models.Project).filter(models.Project.name.like(f"{DEMO_PREFIX}%")).delete(synchronize_session=False)
     session.query(models.Plant).filter(models.Plant.name.like(f"{DEMO_PREFIX}%")).delete(synchronize_session=False)
     session.commit()
 
@@ -63,6 +67,19 @@ def seed_demo():
         session.add(version)
         session.flush()
 
+        project = models.Project(
+            name=f"{DEMO_PREFIX}Project",
+            description="Demo project for UI scenarios",
+            owner_user_id=None,
+            plant_id=plant.id,
+        )
+        session.add(project)
+        session.flush()
+
+        link = models.ProjectFlowsheetVersion(project_id=project.id, flowsheet_version_id=version.id)
+        session.add(link)
+        session.flush()
+
         units = []
         for idx, name in enumerate(["Crusher", "Mill", "Classifier", "Thickener", "Pump"], start=1):
             unit = models.Unit(
@@ -81,6 +98,7 @@ def seed_demo():
         base_input = {"feed_tph": 200.0, "target_p80_microns": 180.0, "model_version": "grind_mvp_v1"}
         scenario_base = models.CalcScenario(
             flowsheet_version_id=version.id,
+            project_id=project.id,
             name=f"{DEMO_PREFIX}Base",
             description="Base demo scenario",
             default_input_json=base_input,
@@ -88,6 +106,7 @@ def seed_demo():
         )
         scenario_test = models.CalcScenario(
             flowsheet_version_id=version.id,
+            project_id=project.id,
             name=f"{DEMO_PREFIX}Test",
             description="Test demo scenario",
             default_input_json={**base_input, "feed_tph": 220.0},
@@ -106,6 +125,7 @@ def seed_demo():
                     flowsheet_version_id=version.id,
                     scenario_id=scenario.id,
                     scenario_name=scenario.name,
+                    project_id=project.id,
                     comment=f"{DEMO_PREFIX}Run {i}",
                     status="success",
                     started_at=started,

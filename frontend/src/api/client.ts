@@ -134,6 +134,7 @@ export interface GrindMvpRunSummary {
   plant_name?: string | null;
   flowsheet_version_id?: string | number | null;
   flowsheet_name?: string | null;
+   scenario_id?: string | null;
   scenario_name?: string | null;
   comment?: string | null;
   throughput_tph?: number | null;
@@ -148,6 +149,7 @@ export interface GrindMvpInput {
   plant_id: string | number;
   flowsheet_version_id: string | number;
   project_id?: number | null;
+  scenario_id?: string | null;
   scenario_name?: string | null;
   feed: {
     tonnage_tph: number;
@@ -178,6 +180,7 @@ export interface GrindMvpRunDetail {
   plant_id?: string | null;
   project_id?: number | null;
   flowsheet_version_id?: string | null;
+  scenario_id?: string | null;
   scenario_name?: string | null;
   comment?: string | null;
   input: GrindMvpInput;
@@ -222,6 +225,7 @@ export interface CalcScenario {
   name: string;
   description?: string | null;
   flowsheet_version_id: string;
+  project_id: number;
   is_baseline: boolean;
 }
 
@@ -403,13 +407,32 @@ export async function fetchAllFlowsheetVersions(): Promise<FlowsheetVersionSumma
 
 export async function fetchCalcScenariosByFlowsheetVersion(
   flowsheetVersionId: string,
+  projectId?: string | number,
 ): Promise<CalcScenario[]> {
-  const resp = await api.get<CalcScenarioListResponse>(`/api/calc-scenarios/by-flowsheet-version/${flowsheetVersionId}`);
+  const resp = await api.get<CalcScenarioListResponse>(`/api/calc-scenarios/by-flowsheet-version/${flowsheetVersionId}`, {
+    params: projectId ? { project_id: projectId } : undefined,
+  });
   return resp.data.items;
+}
+
+export async function fetchCalcScenariosByProject(
+  projectId: string | number,
+  flowsheetVersionId?: string,
+): Promise<CalcScenario[]> {
+  const resp = await api.get<CalcScenarioListResponse>(`/api/calc-scenarios/by-project/${projectId}`, {
+    params: flowsheetVersionId ? { flowsheet_version_id: flowsheetVersionId } : undefined,
+  });
+  return resp.data.items;
+}
+
+export async function fetchCalcScenario(scenarioId: string): Promise<CalcScenario> {
+  const resp = await api.get<CalcScenario>(`/api/calc-scenarios/${scenarioId}`);
+  return resp.data;
 }
 
 export async function createCalcScenario(payload: {
   flowsheet_version_id: string;
+  project_id: number | string;
   name: string;
   description?: string;
   default_input_json: { feed_tph: number; target_p80_microns: number; ore_hardness_ab?: number | null; ore_hardness_ta?: number | null; water_fraction?: number | null };

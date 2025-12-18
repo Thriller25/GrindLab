@@ -38,3 +38,17 @@ def create_unit(client: TestClient, flowsheet_version_id: str) -> str:
     resp = client.post("/api/units/", json=payload)
     assert resp.status_code == 201
     return resp.json()["id"]
+
+
+def create_project(client: TestClient, plant_id: str | None = None, name: str = "Test Project") -> int:
+    payload = {"name": name, "description": "desc"}
+    if plant_id is not None:
+        payload["plant_id"] = plant_id
+    resp = client.post("/api/projects", json=payload)
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+def link_project_to_version(client: TestClient, project_id: int, flowsheet_version_id: str) -> None:
+    resp = client.post(f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}")
+    assert resp.status_code in (200, 201)

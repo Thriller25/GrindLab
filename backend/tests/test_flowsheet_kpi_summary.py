@@ -1,22 +1,26 @@
 from fastapi.testclient import TestClient
 from pytest import approx
 
-from .utils import create_flowsheet, create_flowsheet_version, create_plant
+from .utils import create_flowsheet, create_flowsheet_version, create_plant, create_project, link_project_to_version
 
 
 def test_flowsheet_version_kpi_summary(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
 
     scenario_payloads = [
         {
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Baseline",
             "default_input_json": {"feed_tph": 100, "target_p80_microns": 150},
         },
         {
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "High throughput",
             "default_input_json": {"feed_tph": 130, "target_p80_microns": 140},
         },

@@ -199,7 +199,7 @@ def _build_project_detail(db: Session, project: models.Project) -> ProjectDetail
 
     summaries: list[ProjectFlowsheetSummary] = []
     for _, version, flowsheet, plant in rows:
-        baseline = find_baseline_run_for_version(db, version.id)
+        baseline = find_baseline_run_for_version(db, version.id, project.id)
         runs_for_project = _get_project_runs(db, project.id, version.id)
         best = find_best_project_run(db, project.id, version.id) if runs_for_project else None
         baseline_summary = _build_kpi_summary(baseline) if baseline else None
@@ -462,7 +462,10 @@ def _calculate_project_summary(
 
     scenarios_total = (
         db.query(func.count(models.CalcScenario.id))
-        .filter(models.CalcScenario.flowsheet_version_id.in_(flowsheet_version_ids))
+        .filter(
+            models.CalcScenario.flowsheet_version_id.in_(flowsheet_version_ids),
+            models.CalcScenario.project_id == project.id,
+        )
         .scalar()
         or 0
     )
@@ -491,7 +494,10 @@ def _calculate_project_summary(
     scenario_ids = [
         row[0]
         for row in db.query(models.CalcScenario.id)
-        .filter(models.CalcScenario.flowsheet_version_id.in_(flowsheet_version_ids))
+        .filter(
+            models.CalcScenario.flowsheet_version_id.in_(flowsheet_version_ids),
+            models.CalcScenario.project_id == project.id,
+        )
         .all()
     ]
     run_ids = [
@@ -697,7 +703,10 @@ def get_project_dashboard(
     if flowsheet_version_ids:
         scenarios = (
             db.query(models.CalcScenario)
-            .filter(models.CalcScenario.flowsheet_version_id.in_(flowsheet_version_ids))
+            .filter(
+                models.CalcScenario.flowsheet_version_id.in_(flowsheet_version_ids),
+                models.CalcScenario.project_id == project.id,
+            )
             .all()
         )
     else:

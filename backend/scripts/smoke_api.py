@@ -65,7 +65,9 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
     project_id: int | None = None
     project_plant_id: Any = None
     initial_calc_runs_total: int | None = None
+    initial_scenarios_total: int | None = None
     flowsheet_version_id: Any = None
+    scenario_id: Any = None
     new_run_id: Any = None
 
     def add_check(name: str, status: int, ok: bool, detail: str) -> None:
@@ -108,6 +110,7 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
     dashboard_json = _parse_json(body)
     summary = dashboard_json.get("summary") if isinstance(dashboard_json, dict) else None
     calc_runs_total = summary.get("calc_runs_total") if isinstance(summary, dict) else None
+    scenarios_total = summary.get("scenarios_total") if isinstance(summary, dict) else None
     flowsheet_versions = dashboard_json.get("flowsheet_versions") if isinstance(dashboard_json, dict) else None
     project_block = dashboard_json.get("project") if isinstance(dashboard_json, dict) else None
     ok_dashboard = (
@@ -120,12 +123,15 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
         f"GET /api/projects/{project_id}/dashboard",
         status,
         ok_dashboard,
-        body if not ok_dashboard else f"calc_runs_total={calc_runs_total} flowsheet_versions={len(flowsheet_versions)}",
+        body
+        if not ok_dashboard
+        else f"calc_runs_total={calc_runs_total} scenarios_total={scenarios_total} flowsheet_versions={len(flowsheet_versions)}",
     )
     if not ok_dashboard:
         return _print_results(checks)
 
     initial_calc_runs_total = calc_runs_total
+    initial_scenarios_total = scenarios_total if isinstance(scenarios_total, int) else None
     flowsheet_version = flowsheet_versions[0] if flowsheet_versions else None
     flowsheet_version_id = flowsheet_version.get("id") if isinstance(flowsheet_version, dict) else None
     ok_flowsheet_version = flowsheet_version_id is not None
@@ -138,13 +144,35 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
     if not ok_flowsheet_version:
         return _print_results(checks)
 
+    scenario_payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "name": "smoke-scenario",
+        "default_input_json": {"feed_tph": 480, "target_p80_microns": 160},
+    }
+    status, body = _request("/api/calc-scenarios", method="POST", payload=scenario_payload, base_url=base_url)
+    scenario_json = _parse_json(body)
+    scenario_id = scenario_json.get("id") if isinstance(scenario_json, dict) else None
+    ok_scenario = status in (200, 201) and scenario_id is not None
+    add_check(
+        "POST /api/calc-scenarios",
+        status,
+        ok_scenario,
+        body if not ok_scenario else f"scenario_id={scenario_id}",
+    )
+    if not ok_scenario:
+        return _print_results(checks)
+
+    scenario_name = scenario_json.get("name") if isinstance(scenario_json, dict) else scenario_payload["name"]
+
     plant_id_value = project_block.get("plant_id") if isinstance(project_block, dict) else project_plant_id
     payload = {
         "model_version": "grind_mvp_v1",
         "plant_id": plant_id_value or "demo-plant",
         "flowsheet_version_id": flowsheet_version_id,
         "project_id": project_id,
-        "scenario_name": "smoke-auto",
+        "scenario_id": scenario_id,
+        "scenario_name": scenario_name,
         "feed": {"tonnage_tph": 500.0, "p80_mm": 12.0, "density_t_per_m3": 2.7},
         "mill": {
             "type": "SAG",
@@ -178,15 +206,22 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
     dashboard_after_json = _parse_json(body)
     summary_after = dashboard_after_json.get("summary") if isinstance(dashboard_after_json, dict) else None
     calc_runs_total_after = summary_after.get("calc_runs_total") if isinstance(summary_after, dict) else None
+    scenarios_total_after = summary_after.get("scenarios_total") if isinstance(summary_after, dict) else None
     recent_runs = dashboard_after_json.get("recent_calc_runs") if isinstance(dashboard_after_json, dict) else None
+    scenarios_after = dashboard_after_json.get("scenarios") if isinstance(dashboard_after_json, dict) else None
     ok_dashboard_after = (
-        status == 200 and isinstance(calc_runs_total_after, int) and isinstance(recent_runs, list)
+        status == 200
+        and isinstance(calc_runs_total_after, int)
+        and isinstance(recent_runs, list)
+        and isinstance(scenarios_after, list)
     )
     add_check(
         f"GET /api/projects/{project_id}/dashboard (after run)",
         status,
         ok_dashboard_after,
-        body if not ok_dashboard_after else f"calc_runs_total={calc_runs_total_after} recent={len(recent_runs)}",
+        body
+        if not ok_dashboard_after
+        else f"calc_runs_total={calc_runs_total_after} scenarios_total={scenarios_total_after} recent={len(recent_runs)}",
     )
     if not ok_dashboard_after:
         return _print_results(checks)
@@ -201,6 +236,16 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
     if not ok_counter:
         return _print_results(checks)
 
+    ok_scenarios_counter = scenarios_total_after == (initial_scenarios_total or 0) + 1
+    add_check(
+        "scenarios_total increased",
+        status,
+        ok_scenarios_counter,
+        f"before={initial_scenarios_total}, after={scenarios_total_after}",
+    )
+    if not ok_scenarios_counter:
+        return _print_results(checks)
+
     recent_ids = {str(item.get("id")) for item in recent_runs if isinstance(item, dict)}
     ok_recent = str(new_run_id) in recent_ids
     add_check(
@@ -208,6 +253,15 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
         status,
         ok_recent,
         f"new_run_id={new_run_id}",
+    )
+
+    scenario_ids_after = {str(item.get("id")) for item in scenarios_after if isinstance(item, dict)}
+    ok_scenario_listed = str(scenario_id) in scenario_ids_after
+    add_check(
+        "scenarios list contains created scenario",
+        status,
+        ok_scenario_listed,
+        f"scenario_id={scenario_id}",
     )
 
     return _print_results(checks)

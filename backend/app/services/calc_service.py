@@ -177,6 +177,7 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
         flowsheet_version_id=payload.flowsheet_version_id,
         scenario_id=payload.scenario_id,
         scenario_name=payload.scenario_name,
+        project_id=payload.project_id,
         comment=payload.comment,
         started_by_user_id=payload.started_by_user_id,
         status=CalcRunStatus.PENDING.value,
@@ -303,6 +304,7 @@ def run_flowsheet_calculation_by_scenario(
         flowsheet_version_id=scenario.flowsheet_version_id,
         scenario_id=scenario.id,
         scenario_name=scenario.name,
+        project_id=scenario.project_id,
         input_json=validated_input,
         started_by_user_id=started_by_user_id,
     )
@@ -378,10 +380,48 @@ def run_grind_mvp_calculation(db: Session, payload: GrindMvpInput) -> dict:
 
     flowsheet_version_id = _normalize_flowsheet_version_id(payload.flowsheet_version_id)
 
+    scenario_name = payload.scenario_name
+    project_id = payload.project_id
+    scenario_id_value: uuid.UUID | None = None
+
+    if getattr(payload, "scenario_id", None):
+        try:
+            scenario_id_value = uuid.UUID(str(payload.scenario_id))
+        except Exception:
+            raise CalculationError("Invalid scenario_id")
+        scenario = db.get(models.CalcScenario, scenario_id_value)
+        if scenario is None:
+            raise CalculationError(f"CalcScenario {payload.scenario_id} not found")
+        if scenario.flowsheet_version_id != flowsheet_version_id:
+            raise CalculationError("Scenario flowsheet_version_id does not match payload")
+        if project_id is not None and scenario.project_id != project_id:
+            raise CalculationError("Scenario does not belong to provided project")
+        project_id = scenario.project_id
+        scenario_name = scenario.name
+
+    if project_id is not None:
+        link_exists = (
+            db.query(models.ProjectFlowsheetVersion)
+            .filter(
+                models.ProjectFlowsheetVersion.project_id == project_id,
+                models.ProjectFlowsheetVersion.flowsheet_version_id == flowsheet_version_id,
+            )
+            .first()
+        )
+        if link_exists is None:
+            raise CalculationError("Flowsheet version is not linked to project")
+
+    if scenario_id_value:
+        payload_dict["scenario_id"] = str(scenario_id_value)
+    payload_dict["scenario_name"] = scenario_name
+    payload_dict["project_id"] = project_id
+    payload_dict["flowsheet_version_id"] = str(flowsheet_version_id)
+
     calc_run = models.CalcRun(
         flowsheet_version_id=flowsheet_version_id,
-        scenario_name=payload.scenario_name,
-        project_id=payload.project_id,
+        scenario_id=scenario_id_value,
+        scenario_name=scenario_name,
+        project_id=project_id,
         status=CalcRunStatus.PENDING.value,
         started_at=started_at,
         input_json=payload_dict,

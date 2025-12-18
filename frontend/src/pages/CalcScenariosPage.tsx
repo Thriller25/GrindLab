@@ -1,15 +1,26 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   CalcScenario,
   createCalcScenario,
   fetchAllFlowsheetVersions,
+  fetchCalcScenariosByProject,
   fetchCalcScenariosByFlowsheetVersion,
+  fetchProjectDashboard,
   FlowsheetVersionSummary,
   setCalcScenarioBaseline,
 } from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
 
 export const CalcScenariosPage = () => {
+  const location = useLocation();
+  const projectIdParam = useMemo(
+    () => new URLSearchParams(location.search).get("projectId")?.trim() ?? "",
+    [location.search],
+  );
+  const projectIdNumber = projectIdParam && !Number.isNaN(Number(projectIdParam)) ? Number(projectIdParam) : null;
+
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [flowsheetVersions, setFlowsheetVersions] = useState<FlowsheetVersionSummary[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string>("");
   const [scenarios, setScenarios] = useState<CalcScenario[]>([]);
@@ -21,6 +32,25 @@ export const CalcScenariosPage = () => {
   const [baselineChangingId, setBaselineChangingId] = useState<string | null>(null);
 
   useEffect(() => {
+    setError(null);
+    if (projectIdParam) {
+      fetchProjectDashboard(projectIdParam)
+        .then((resp) => {
+          const versions = resp.flowsheet_versions.map((fv) => ({
+            id: fv.id,
+            name: fv.version_label ?? fv.id,
+            flowsheet_id: fv.flowsheet_id ?? "",
+          }));
+          setProjectName(resp.project?.name ?? null);
+          setFlowsheetVersions(versions);
+          if (versions.length > 0) {
+            setSelectedVersionId(versions[0].id);
+          }
+        })
+        .catch(() => setError("Не удалось загрузить версии схем для проекта"));
+      return;
+    }
+
     fetchAllFlowsheetVersions()
       .then((items) => {
         setFlowsheetVersions(items);
@@ -29,7 +59,7 @@ export const CalcScenariosPage = () => {
         }
       })
       .catch(() => setError("Не удалось загрузить версии схем"));
-  }, []);
+  }, [projectIdParam]);
 
   useEffect(() => {
     if (!selectedVersionId) {
@@ -38,19 +68,27 @@ export const CalcScenariosPage = () => {
     }
     setIsLoading(true);
     setError(null);
-    fetchCalcScenariosByFlowsheetVersion(selectedVersionId)
-      .then(setScenarios)
-      .catch(() => setError("Не удалось загрузить сценарии"))
+    const loader = projectIdParam
+      ? fetchCalcScenariosByProject(projectIdParam, selectedVersionId)
+      : fetchCalcScenariosByFlowsheetVersion(selectedVersionId);
+    loader
+      .then((items) => setScenarios(items))
+      .catch(() => setError("Не удалось загрузить список сценариев"))
       .finally(() => setIsLoading(false));
-  }, [selectedVersionId]);
+  }, [projectIdParam, selectedVersionId]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !selectedVersionId) return;
+    if (projectIdNumber === null) {
+      setError("Не указан projectId для сценария");
+      return;
+    }
     setIsCreating(true);
     try {
       const created = await createCalcScenario({
         flowsheet_version_id: selectedVersionId,
+        project_id: projectIdNumber,
         name: newName.trim(),
         description: newDescription.trim() || undefined,
         default_input_json: {
@@ -82,7 +120,7 @@ export const CalcScenariosPage = () => {
         prev.map((s) => (s.id === updated.id ? updated : { ...s, is_baseline: false })),
       );
     } catch {
-      alert("Не удалось назначить базовый сценарий");
+      alert("Не удалось отметить базовый сценарий");
     } finally {
       setBaselineChangingId(null);
     }
@@ -93,10 +131,13 @@ export const CalcScenariosPage = () => {
       <div className="card wide-card">
         <header className="page-header">
           <div>
-            <h1>Сценарии расчёта измельчения</h1>
-            <div className="meta-row">
-              <span className="meta-item">Шаблоны сценариев для модели grind_mvp_v1.</span>
-            </div>
+            <h1>Сценарии расчётов</h1>
+            {projectName && <div className="meta-row">Проект: {projectName}</div>}
+            {!projectIdParam && (
+              <div className="meta-row">
+                <span className="meta-item">Для создания сценария передайте projectId в query.</span>
+              </div>
+            )}
           </div>
           <BackToHomeButton />
         </header>
@@ -104,7 +145,7 @@ export const CalcScenariosPage = () => {
         <section className="section">
           <div className="section-heading">
             <h2>Версия схемы</h2>
-            <p className="section-subtitle">Выберите версию схемы, чтобы увидеть её сценарии.</p>
+            <p className="section-subtitle">Выберите версию схемы, для которой создаёте сценарий</p>
           </div>
           <select
             className="input"
@@ -121,9 +162,9 @@ export const CalcScenariosPage = () => {
 
         <section className="section">
           <div className="section-heading">
-            <h2>Создать сценарий</h2>
+            <h2>Новый сценарий</h2>
             <p className="section-subtitle">
-              Для версии: {selectedVersionName || "не выбрана"}
+              Текущая версия: {selectedVersionName || "не выбрана"} | ProjectId: {projectIdParam || "—"}
             </p>
           </div>
           <form className="scenario-form" onSubmit={handleCreate}>
@@ -135,7 +176,11 @@ export const CalcScenariosPage = () => {
               Описание
               <textarea value={newDescription} onChange={(e) => setNewDescription(e.target.value)} />
             </label>
-            <button className="btn" type="submit" disabled={isCreating || !newName.trim() || !selectedVersionId}>
+            <button
+              className="btn"
+              type="submit"
+              disabled={isCreating || !newName.trim() || !selectedVersionId || projectIdNumber === null}
+            >
               Создать сценарий
             </button>
           </form>
@@ -143,9 +188,9 @@ export const CalcScenariosPage = () => {
 
         <section className="section">
           <div className="section-heading">
-            <h2>Список сценариев</h2>
+            <h2>Сценарии</h2>
           </div>
-          {isLoading && <div className="muted">Загрузка сценариев…</div>}
+          {isLoading && <div className="muted">Загрузка сценариев...</div>}
           {error && <div className="general-error">{error}</div>}
           {!isLoading && !error && (
             <table className="table scenarios-table">
@@ -182,7 +227,7 @@ export const CalcScenariosPage = () => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4}>Для этой версии схемы пока нет сценариев.</td>
+                    <td colSpan={4}>Нет сценариев для выбранной версии.</td>
                   </tr>
                 )}
               </tbody>

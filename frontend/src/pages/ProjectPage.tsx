@@ -14,10 +14,10 @@ export const ProjectPage = () => {
     () => new URLSearchParams(location.search).get("refresh") === "1",
   );
 
-  const recentRuns = useMemo(() => data?.recent_calc_runs ?? [], [data?.recent_calc_runs]);
+  const recentRuns = useMemo(() => data?.recent_calc_runs ?? [], [data]);
 
   const formatDateTime = (value?: string | null) => {
-    if (!value) return "Дата не указана";
+    if (!value) return "-";
     return new Date(value).toLocaleString("ru-RU", {
       day: "2-digit",
       month: "2-digit",
@@ -29,7 +29,7 @@ export const ProjectPage = () => {
 
   const loadDashboard = useCallback(() => {
     if (!projectId) {
-      setError("Не указан идентификатор проекта");
+      setError("Project id is required");
       setData(null);
       return;
     }
@@ -37,7 +37,7 @@ export const ProjectPage = () => {
     setError(null);
     fetchProjectDashboard(projectId)
       .then((resp) => setData(resp))
-      .catch(() => setError("Не удалось загрузить проект"))
+      .catch(() => setError("Не удалось загрузить дашборд проекта"))
       .finally(() => setIsLoading(false));
   }, [projectId]);
 
@@ -63,28 +63,48 @@ export const ProjectPage = () => {
 
   const summary = data?.summary;
 
+  const handleStartRun = () => {
+    if (!projectId) return;
+    navigate(`/calc-run?projectId=${projectId}`);
+  };
+
+  const handleRunScenario = (scenarioId: string) => {
+    if (!projectId) return;
+    navigate(`/calc-run?projectId=${projectId}&scenarioId=${scenarioId}`);
+  };
+
+  const handleCreateScenario = () => {
+    if (!projectId) return;
+    navigate(`/calc-scenarios?projectId=${projectId}`);
+  };
+
   return (
     <div className="page">
       <div className="card wide-card">
         <div className="page-header">
           <div>
-            <h1>{data?.project?.name ?? "Проект"}</h1>
+            <h1>{data?.project?.name ?? "Project"}</h1>
             {data?.project?.description && <p className="muted">{data.project.description}</p>}
           </div>
           <div className="actions">
             <button className="btn secondary" type="button" onClick={loadDashboard} disabled={isLoading}>
-              Обновить
+              Refresh
             </button>
             {projectId && (
-              <button className="btn" type="button" onClick={() => navigate(`/calc-run?projectId=${projectId}`)}>
-                Новый расчёт для проекта
+              <button className="btn secondary" type="button" onClick={handleCreateScenario}>
+                Create scenario
+              </button>
+            )}
+            {projectId && (
+              <button className="btn" type="button" onClick={handleStartRun}>
+                Start run for project
               </button>
             )}
             <BackToHomeButton />
           </div>
         </div>
 
-        {isLoading && <div className="muted">Загружаем проект…</div>}
+        {isLoading && <div className="muted">Загрузка...</div>}
         {error && (
           <div className="general-error">
             {error}{" "}
@@ -99,17 +119,17 @@ export const ProjectPage = () => {
             <section className="section">
               <div className="kpi-grid">
                 <div className="metric-card">
-                  <div className="stat-label">Версии схем</div>
+                  <div className="stat-label">Версий тех. схем</div>
                   <div className="stat-value">
                     {summary?.flowsheet_versions_total ?? data.flowsheet_versions.length ?? 0}
                   </div>
                 </div>
                 <div className="metric-card">
-                  <div className="stat-label">Сценарии</div>
+                  <div className="stat-label">Сценариев</div>
                   <div className="stat-value">{summary?.scenarios_total ?? data.scenarios.length ?? 0}</div>
                 </div>
                 <div className="metric-card">
-                  <div className="stat-label">Расчёты</div>
+                  <div className="stat-label">Запусков</div>
                   <div className="stat-value">{summary?.calc_runs_total ?? 0}</div>
                 </div>
               </div>
@@ -118,14 +138,14 @@ export const ProjectPage = () => {
             <section className="section">
               <div className="section-heading">
                 <h2>Последние расчёты</h2>
-                <p className="section-subtitle">Всего {summary?.calc_runs_total ?? recentRuns.length ?? 0}</p>
+                <p className="section-subtitle">Всего: {summary?.calc_runs_total ?? recentRuns.length ?? 0}</p>
               </div>
               {recentRuns.length ? (
                 <ul className="projects-list">
                   {recentRuns.map((run) => (
                     <li key={run.id} className="project-item">
                       <div className="project-name">
-                        {run.scenario_name || "Расчёт"}
+                        {run.scenario_name || "Без сценария"}
                         {run.is_baseline && <span className="badge badge-baseline">Базовый</span>}
                       </div>
                       <div className="project-updated muted">{formatDateTime(run.started_at)}</div>
@@ -134,16 +154,14 @@ export const ProjectPage = () => {
                   ))}
                 </ul>
               ) : (
-                <div className="empty-state">Расчётов пока нет.</div>
+                <div className="empty-state">Нет запусков.</div>
               )}
             </section>
 
             <section className="section">
               <div className="section-heading">
                 <h2>Сценарии</h2>
-                <p className="section-subtitle">
-                  Всего {summary?.scenarios_total ?? data.scenarios.length ?? 0}
-                </p>
+                <p className="section-subtitle">Всего: {summary?.scenarios_total ?? data.scenarios.length ?? 0}</p>
               </div>
               {data.scenarios.length ? (
                 <ul className="projects-list">
@@ -156,11 +174,22 @@ export const ProjectPage = () => {
                       {scenario.description && (
                         <div className="project-updated muted">{scenario.description}</div>
                       )}
+                      {projectId && (
+                        <div className="actions" style={{ gap: 8 }}>
+                          <button
+                            className="btn secondary"
+                            type="button"
+                            onClick={() => handleRunScenario(scenario.id)}
+                          >
+                            Запустить по сценарию
+                          </button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <div className="empty-state">Сценариев пока нет.</div>
+                <div className="empty-state">Нет сценариев.</div>
               )}
             </section>
 
@@ -168,20 +197,20 @@ export const ProjectPage = () => {
               <div className="section-heading">
                 <h2>Версии схем</h2>
                 <p className="section-subtitle">
-                  Всего {summary?.flowsheet_versions_total ?? data.flowsheet_versions.length ?? 0}
+                  Всего: {summary?.flowsheet_versions_total ?? data.flowsheet_versions.length ?? 0}
                 </p>
               </div>
               {data.flowsheet_versions.length ? (
                 <ul className="projects-list">
                   {data.flowsheet_versions.map((version) => (
                     <li key={version.id} className="project-item">
-                      <div className="project-name">{version.version_label || "Версия схемы"}</div>
+                      <div className="project-name">{version.version_label || "Неизвестная версия"}</div>
                       <div className="project-updated muted">ID: {version.id}</div>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <div className="empty-state">Версии схем пока не прикреплены.</div>
+                <div className="empty-state">Нет прикрепленных версий схем.</div>
               )}
             </section>
           </>

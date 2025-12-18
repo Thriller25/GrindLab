@@ -11,6 +11,7 @@ class CalcRunCreate(BaseModel):
     flowsheet_version_id: UUID
     scenario_id: Optional[UUID] = None
     scenario_name: Optional[str] = None
+    project_id: Optional[int] = None
     comment: Optional[str] = None
     input_json: Optional[CalcInput] = None
     started_by_user_id: Optional[UUID] = None
@@ -21,6 +22,7 @@ class CalcRunRead(BaseModel):
     flowsheet_version_id: UUID
     scenario_id: Optional[UUID] = None
     scenario_name: Optional[str] = None
+    project_id: Optional[int] = None
     comment: Optional[str] = None
     started_by_user_id: Optional[UUID] = None
     status: str
@@ -40,6 +42,7 @@ class CalcRunListItem(BaseModel):
     flowsheet_version_id: UUID
     scenario_id: Optional[UUID] = None
     scenario_name: Optional[str] = None
+    project_id: Optional[int] = None
     status: str
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

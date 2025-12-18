@@ -16,6 +16,7 @@ class CalcScenarioBase(BaseModel):
 
 class CalcScenarioCreate(CalcScenarioBase):
     flowsheet_version_id: UUID
+    project_id: int
 
 
 class CalcScenarioUpdate(BaseModel):
@@ -28,6 +29,7 @@ class CalcScenarioUpdate(BaseModel):
 class CalcScenarioRead(CalcScenarioBase):
     id: UUID
     flowsheet_version_id: UUID
+    project_id: int
     created_at: datetime
     updated_at: datetime
 
@@ -38,6 +40,7 @@ class CalcScenarioListItem(BaseModel):
     id: UUID
     name: str
     flowsheet_version_id: UUID
+    project_id: int
     is_baseline: bool = False
 
     model_config = {"from_attributes": True}

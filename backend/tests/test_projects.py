@@ -207,6 +207,7 @@ def test_project_summary_with_activity(client: TestClient):
         "/api/calc-scenarios",
         json={
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Scenario A",
             "default_input_json": {"feed_tph": 100, "target_p80_microns": 150},
             "is_baseline": False,
@@ -530,6 +531,7 @@ def test_project_dashboard_with_data(client: TestClient):
         "/api/calc-scenarios",
         json={
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Dash Scenario",
             "default_input_json": {"feed_tph": 120, "target_p80_microns": 160},
         },
@@ -666,7 +668,7 @@ def test_project_dashboard_private_requires_login(client: TestClient):
 
 def _make_calc_run(
     flowsheet_version_id,
-    project_id: int | None,
+    project_id: int,
     throughput: float,
     p80_mm: float,
     specific_energy: float,
@@ -681,6 +683,7 @@ def _make_calc_run(
         if is_baseline:
             scenario = models.CalcScenario(
                 flowsheet_version_id=version_id,
+                project_id=project_id,
                 name="baseline",
                 default_input_json={},
                 is_baseline=True,
@@ -744,7 +747,7 @@ def test_project_detail_flowsheet_summaries_with_best_and_diff(client: TestClien
 
     baseline_id = _make_calc_run(
         flowsheet_version_id=flowsheet_version_id,
-        project_id=None,
+        project_id=int(project_id),
         throughput=500.0,
         p80_mm=0.2,
         specific_energy=13.0,
@@ -807,7 +810,7 @@ def test_project_detail_flowsheet_summaries_without_project_runs(client: TestCli
 
     baseline_id = _make_calc_run(
         flowsheet_version_id=flowsheet_version_id,
-        project_id=None,
+        project_id=int(project_id),
         throughput=480.0,
         p80_mm=0.21,
         specific_energy=13.8,

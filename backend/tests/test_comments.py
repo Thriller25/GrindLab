@@ -2,7 +2,13 @@ import uuid
 
 from fastapi.testclient import TestClient
 
-from .utils import create_flowsheet, create_flowsheet_version, create_plant
+from .utils import (
+    create_flowsheet,
+    create_flowsheet_version,
+    create_plant,
+    create_project,
+    link_project_to_version,
+)
 
 
 def _create_run(client: TestClient, flowsheet_version_id: str) -> str:
@@ -18,11 +24,12 @@ def _create_run(client: TestClient, flowsheet_version_id: str) -> str:
     return resp.json()["id"]
 
 
-def _create_scenario(client: TestClient, flowsheet_version_id: str) -> str:
+def _create_scenario(client: TestClient, flowsheet_version_id: str, project_id: int) -> str:
     resp = client.post(
         "/api/calc-scenarios",
         json={
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Scenario for comments",
             "default_input_json": {"feed_tph": 120, "target_p80_microns": 160},
         },
@@ -59,7 +66,9 @@ def test_create_comment_for_scenario(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-    scenario_id = _create_scenario(client, flowsheet_version_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+    scenario_id = _create_scenario(client, flowsheet_version_id, project_id)
 
     payload = {"author": "Analyst", "text": "Scenario discussion"}
     resp = client.post(f"/api/comments/calc-scenarios/{scenario_id}", json=payload)
@@ -139,7 +148,9 @@ def test_add_comment_to_scenario_as_authenticated_user(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-    scenario_id = _create_scenario(client, flowsheet_version_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+    scenario_id = _create_scenario(client, flowsheet_version_id, project_id)
 
     email = "scenario@example.com"
     access_token = _register_and_token(client, email, "secret")
@@ -161,7 +172,9 @@ def test_add_comment_to_scenario_me_unauthorized(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-    scenario_id = _create_scenario(client, flowsheet_version_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+    scenario_id = _create_scenario(client, flowsheet_version_id, project_id)
 
     resp = client.post(
         f"/api/calc-scenarios/{scenario_id}/comments/me",

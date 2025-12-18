@@ -27,10 +27,17 @@ def _setup_entities(client: TestClient, headers: dict) -> tuple[str, str, str]:
     assert project_resp.status_code == 201
     project_id = project_resp.json()["id"]
 
+    attach_resp = client.post(
+        f"/api/projects/{project_id}/flowsheet-versions/{flowsheet_version_id}",
+        headers=headers,
+    )
+    assert attach_resp.status_code in (200, 201)
+
     scenario_resp = client.post(
         "/api/calc-scenarios",
         json={
             "flowsheet_version_id": flowsheet_version_id,
+            "project_id": project_id,
             "name": "Fav scenario",
             "default_input_json": {"feed_tph": 120, "target_p80_microns": 140},
         },
