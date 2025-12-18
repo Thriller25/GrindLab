@@ -107,6 +107,7 @@ export const CalcRunPage = () => {
   const projectIdParam = searchParams.get("projectId")?.trim() ?? "";
   const scenarioIdParam = searchParams.get("scenarioId")?.trim() ?? "";
   const projectIdNumber = projectIdParam && !Number.isNaN(Number(projectIdParam)) ? Number(projectIdParam) : null;
+  const isScenarioLocked = Boolean(scenarioIdParam);
 
   const initialForm = useMemo(() => {
     if (!fromRun) return defaultForm;
@@ -147,11 +148,16 @@ export const CalcRunPage = () => {
   const [dictError, setDictError] = useState<string | null>(null);
   const [scenariosError, setScenariosError] = useState<string | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
+  const [scenarioContextName, setScenarioContextName] = useState<string | null>(null);
   const [result, setResult] = useState<GrindMvpResult | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [useBaseline, setUseBaseline] = useState<boolean>(!!fromRun);
+  const scenarioIdValue = useMemo(() => {
+    const raw = scenarioIdParam || selectedScenarioId;
+    return raw && raw.trim() ? raw.trim() : null;
+  }, [scenarioIdParam, selectedScenarioId]);
 
   const updateField = (path: string, value: any) => {
     setForm((prev) => {
@@ -175,6 +181,7 @@ export const CalcRunPage = () => {
     fetchCalcScenario(scenarioIdParam)
       .then(async (scenario) => {
         setSelectedScenarioId(scenario.id);
+        setScenarioContextName(scenario.name);
         updateField("scenario_name", scenario.name);
         setFlowsheetVersionId(String(scenario.flowsheet_version_id));
         try {
@@ -189,7 +196,10 @@ export const CalcRunPage = () => {
           // ignore lookup errors, user can pick manually
         }
       })
-      .catch(() => setScenariosError("Не удалось загрузить сценарий из ссылки"));
+      .catch(() => {
+        setScenarioContextName(null);
+        setScenariosError("Не удалось загрузить сценарий из ссылки");
+      });
   }, [scenarioIdParam]);
 
   useEffect(() => {
@@ -218,7 +228,7 @@ export const CalcRunPage = () => {
   }, [fromRun]);
 
   useEffect(() => {
-    setFlowsheetVersionId("");
+    setFlowsheetVersionId((prev) => (isScenarioLocked ? prev : ""));
     setFlowsheetVersions([]);
     setSelectedScenarioId((prev) => (scenarioIdParam ? prev : ""));
     setScenarios([]);
@@ -244,7 +254,7 @@ export const CalcRunPage = () => {
         setDictError("Не удалось загрузить версии схем");
       })
       .finally(() => setIsFlowsheetsLoading(false));
-  }, [plantId, fromRun]);
+  }, [plantId, fromRun, isScenarioLocked, scenarioIdParam]);
 
   useEffect(() => {
     setSelectedScenarioId("");
@@ -327,7 +337,6 @@ export const CalcRunPage = () => {
     setResult(null);
     try {
       const projectIdValue = projectIdParam ? projectIdNumber ?? projectIdParam : null;
-      const scenarioIdValue = selectedScenarioId || scenarioIdParam || null;
       const payload = {
         model_version: "grind_mvp_v1",
         plant_id: plantId.trim(),
@@ -400,6 +409,9 @@ export const CalcRunPage = () => {
           <div>
             <h1>Новый расчёт (grind_mvp_v1)</h1>
             {projectIdParam && <div className="muted">Проект: {projectIdParam}</div>}
+            {isScenarioLocked && scenarioContextName && (
+              <div className="muted">Запуск из сценария «{scenarioContextName}»</div>
+            )}
           </div>
           <BackToHomeButton />
         </div>
@@ -411,7 +423,7 @@ export const CalcRunPage = () => {
               className={fieldErrors.plantId ? "input error" : "input"}
               value={plantId}
               onChange={(e) => setPlantId(e.target.value)}
-              disabled={isPlantsLoading || plants.length === 0}
+              disabled={isScenarioLocked || isPlantsLoading || plants.length === 0}
             >
               <option value="">Выберите фабрику...</option>
               {plants.map((p) => (
@@ -428,7 +440,7 @@ export const CalcRunPage = () => {
               className={fieldErrors.flowsheetVersionId ? "input error" : "input"}
               value={flowsheetVersionId}
               onChange={(e) => setFlowsheetVersionId(e.target.value)}
-              disabled={!plantId || isFlowsheetsLoading || flowsheetVersions.length === 0}
+              disabled={isScenarioLocked || !plantId || isFlowsheetsLoading || flowsheetVersions.length === 0}
             >
               <option value="">Выберите версию схемы...</option>
               {flowsheetVersions.map((fv) => (
@@ -458,7 +470,7 @@ export const CalcRunPage = () => {
                   updateField("scenario_name", scenario.name);
                 }
               }}
-              disabled={!flowsheetVersionId || isScenariosLoading || !!scenarioIdParam}
+              disabled={!flowsheetVersionId || isScenariosLoading || isScenarioLocked}
             >
               <option value="">
                 {isScenariosLoading
@@ -483,6 +495,7 @@ export const CalcRunPage = () => {
               type="text"
               value={form.scenario_name}
               onChange={(e) => updateField("scenario_name", e.target.value)}
+              disabled={isScenarioLocked}
             />
             {fieldErrors.scenarioName && (
               <div className="field-error">{fieldErrors.scenarioName}</div>

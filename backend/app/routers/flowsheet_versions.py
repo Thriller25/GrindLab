@@ -128,6 +128,12 @@ def clone_flowsheet_version(
                 default_input_json=scenario.default_input_json,
                 is_baseline=scenario.is_baseline,
             )
+            if scenario.is_baseline:
+                (
+                    db.query(models.CalcScenario)
+                    .filter(models.CalcScenario.project_id == scenario.project_id)
+                    .update({models.CalcScenario.is_baseline: False}, synchronize_session=False)
+                )
             db.add(cloned)
             cloned_scenarios.append(cloned)
         db.commit()

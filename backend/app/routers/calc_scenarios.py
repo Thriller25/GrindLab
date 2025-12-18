@@ -45,13 +45,8 @@ def _ensure_version_linked_to_project(db: Session, project_id: int, flowsheet_ve
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Flowsheet version is not linked to project")
 
 
-def _clear_baseline_for_version(
-    db: Session, flowsheet_version_id: uuid.UUID, project_id: int, exclude_id: Optional[uuid.UUID] = None
-) -> None:
-    query = db.query(models.CalcScenario).filter(
-        models.CalcScenario.flowsheet_version_id == flowsheet_version_id,
-        models.CalcScenario.project_id == project_id,
-    )
+def _clear_project_baseline(db: Session, project_id: int, exclude_id: Optional[uuid.UUID] = None) -> None:
+    query = db.query(models.CalcScenario).filter(models.CalcScenario.project_id == project_id)
     if exclude_id:
         query = query.filter(models.CalcScenario.id != exclude_id)
     query.update({models.CalcScenario.is_baseline: False}, synchronize_session=False)
@@ -59,9 +54,7 @@ def _clear_baseline_for_version(
 
 def _apply_baseline(db: Session, scenario: models.CalcScenario, is_baseline: bool) -> None:
     if is_baseline:
-        _clear_baseline_for_version(
-            db, scenario.flowsheet_version_id, project_id=scenario.project_id, exclude_id=scenario.id
-        )
+        _clear_project_baseline(db, project_id=scenario.project_id, exclude_id=scenario.id)
     scenario.is_baseline = is_baseline
     db.add(scenario)
 
@@ -86,7 +79,7 @@ def create_calc_scenario(payload: CalcScenarioCreate, db: Session = Depends(get_
     )
     db.add(scenario)
     if payload.is_baseline:
-        _clear_baseline_for_version(db, payload.flowsheet_version_id, project_id=payload.project_id)
+        _clear_project_baseline(db, project_id=payload.project_id)
         scenario.is_baseline = True
     db.commit()
     db.refresh(scenario)

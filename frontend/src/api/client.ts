@@ -227,6 +227,8 @@ export interface CalcScenario {
   flowsheet_version_id: string;
   project_id: number;
   is_baseline: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CalcScenarioListResponse {

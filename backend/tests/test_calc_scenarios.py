@@ -313,20 +313,25 @@ def test_clone_flowsheet_version_without_scenarios(client: TestClient):
     assert scenarios_list_body["total"] == 0
 
 
-def test_set_baseline_scenario_for_flowsheet_version(client: TestClient):
+def test_set_baseline_scenario_is_unique_per_project(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
-    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    version_a = create_flowsheet_version(client, flowsheet_id)
+    version_b = create_flowsheet_version(client, flowsheet_id)
+
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, version_a)
+    link_project_to_version(client, project_id, version_b)
 
     payloads = [
         {
-            "flowsheet_version_id": flowsheet_version_id,
+            "flowsheet_version_id": version_a,
             "project_id": project_id,
             "name": "Scenario Baseline 1",
             "default_input_json": {"feed_tph": 120, "target_p80_microns": 150},
         },
         {
-            "flowsheet_version_id": flowsheet_version_id,
+            "flowsheet_version_id": version_b,
             "project_id": project_id,
             "name": "Scenario Baseline 2",
             "default_input_json": {"feed_tph": 140, "target_p80_microns": 160},
@@ -346,9 +351,9 @@ def test_set_baseline_scenario_for_flowsheet_version(client: TestClient):
     assert set_resp.status_code == 200
     assert set_resp.json()["is_baseline"] is True
 
-    other_resp = client.get(f"/api/calc-scenarios/{second_id}")
-    assert other_resp.status_code == 200
-    assert other_resp.json()["is_baseline"] is False
+    second_before_resp = client.get(f"/api/calc-scenarios/{second_id}")
+    assert second_before_resp.status_code == 200
+    assert second_before_resp.json()["is_baseline"] is False
 
     second_set_resp = client.post(f"/api/calc-scenarios/{second_id}/set-baseline")
     assert second_set_resp.status_code == 200
@@ -358,12 +363,12 @@ def test_set_baseline_scenario_for_flowsheet_version(client: TestClient):
     assert first_after_resp.status_code == 200
     assert first_after_resp.json()["is_baseline"] is False
 
-    overview_resp = client.get(f"/api/flowsheet-versions/{flowsheet_version_id}/overview")
-    assert overview_resp.status_code == 200
-    overview_body = overview_resp.json()
-    baselines = [item for item in overview_body["scenarios"] if item["scenario"]["is_baseline"]]
+    dashboard_resp = client.get(f"/api/projects/{project_id}/dashboard")
+    assert dashboard_resp.status_code == 200
+    scenarios = dashboard_resp.json().get("scenarios", [])
+    baselines = [item for item in scenarios if item.get("is_baseline")]
     assert len(baselines) == 1
-    assert baselines[0]["scenario"]["id"] == second_id
+    assert baselines[0]["id"] == second_id
 
 
 def test_unset_baseline_scenario(client: TestClient):

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import BackToHomeButton from "../components/BackToHomeButton";
-import { fetchProjectDashboard, ProjectDashboardResponse } from "../api/client";
+import { fetchProjectDashboard, ProjectDashboardResponse, setCalcScenarioBaseline } from "../api/client";
 
 export const ProjectPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -10,11 +10,28 @@ export const ProjectPage = () => {
   const [data, setData] = useState<ProjectDashboardResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scenarioActionError, setScenarioActionError] = useState<string | null>(null);
+  const [baselineUpdatingId, setBaselineUpdatingId] = useState<string | null>(null);
   const [refreshPending, setRefreshPending] = useState(
     () => new URLSearchParams(location.search).get("refresh") === "1",
   );
 
   const recentRuns = useMemo(() => data?.recent_calc_runs ?? [], [data]);
+  const flowsheetVersionNameById = useMemo(() => {
+    if (!data?.flowsheet_versions) return {};
+    return data.flowsheet_versions.reduce<Record<string, string>>((acc, version) => {
+      acc[String(version.id)] = version.version_label || String(version.id);
+      return acc;
+    }, {});
+  }, [data]);
+  const scenarios = useMemo(() => {
+    const items = data?.scenarios ?? [];
+    return [...items].sort((a, b) => {
+      const aDate = a.updated_at || a.created_at || "";
+      const bDate = b.updated_at || b.created_at || "";
+      return new Date(bDate).getTime() - new Date(aDate).getTime();
+    });
+  }, [data]);
 
   const formatDateTime = (value?: string | null) => {
     if (!value) return "-";
@@ -35,6 +52,7 @@ export const ProjectPage = () => {
     }
     setIsLoading(true);
     setError(null);
+    setScenarioActionError(null);
     fetchProjectDashboard(projectId)
       .then((resp) => setData(resp))
       .catch(() => setError("Не удалось загрузить дашборд проекта"))
@@ -71,6 +89,20 @@ export const ProjectPage = () => {
   const handleRunScenario = (scenarioId: string) => {
     if (!projectId) return;
     navigate(`/calc-run?projectId=${projectId}&scenarioId=${scenarioId}`);
+  };
+
+  const handleSetBaseline = async (scenarioId: string) => {
+    if (!projectId) return;
+    setScenarioActionError(null);
+    setBaselineUpdatingId(scenarioId);
+    try {
+      await setCalcScenarioBaseline(scenarioId);
+      loadDashboard();
+    } catch {
+      setScenarioActionError("Не удалось обновить baseline для сценария");
+    } finally {
+      setBaselineUpdatingId(null);
+    }
   };
 
   const handleCreateScenario = () => {
@@ -117,102 +149,138 @@ export const ProjectPage = () => {
         {!isLoading && !error && data && (
           <>
             <section className="section">
-              <div className="kpi-grid">
-                <div className="metric-card">
-                  <div className="stat-label">Версий тех. схем</div>
-                  <div className="stat-value">
-                    {summary?.flowsheet_versions_total ?? data.flowsheet_versions.length ?? 0}
-                  </div>
-                </div>
-                <div className="metric-card">
-                  <div className="stat-label">Сценариев</div>
-                  <div className="stat-value">{summary?.scenarios_total ?? data.scenarios.length ?? 0}</div>
-                </div>
-                <div className="metric-card">
-                  <div className="stat-label">Запусков</div>
-                  <div className="stat-value">{summary?.calc_runs_total ?? 0}</div>
-                </div>
-              </div>
-            </section>
+                          <div className="kpi-grid">
+                            <div className="metric-card">
+                              <div className="stat-label">Версий тех. схем</div>
+                              <div className="stat-value">
+                                {summary?.flowsheet_versions_total ?? data.flowsheet_versions.length ?? 0}
+                              </div>
+                            </div>
+                            <div className="metric-card">
+                              <div className="stat-label">Сценариев</div>
+                              <div className="stat-value">{summary?.scenarios_total ?? data.scenarios.length ?? 0}</div>
+                            </div>
+                            <div className="metric-card">
+                              <div className="stat-label">Запусков</div>
+                              <div className="stat-value">{summary?.calc_runs_total ?? 0}</div>
+                            </div>
+                          </div>
+                        </section>
 
             <section className="section">
-              <div className="section-heading">
-                <h2>Последние расчёты</h2>
-                <p className="section-subtitle">Всего: {summary?.calc_runs_total ?? recentRuns.length ?? 0}</p>
-              </div>
-              {recentRuns.length ? (
-                <ul className="projects-list">
-                  {recentRuns.map((run) => (
-                    <li key={run.id} className="project-item">
-                      <div className="project-name">
-                        {run.scenario_name || "Без сценария"}
-                        {run.is_baseline && <span className="badge badge-baseline">Базовый</span>}
-                      </div>
-                      <div className="project-updated muted">{formatDateTime(run.started_at)}</div>
-                      {run.status && <div className="chip small">{run.status}</div>}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="empty-state">Нет запусков.</div>
-              )}
-            </section>
+                          <div className="section-heading">
+                            <h2>Последние расчёты</h2>
+                            <p className="section-subtitle">Всего: {summary?.calc_runs_total ?? recentRuns.length ?? 0}</p>
+                          </div>
+                          {recentRuns.length ? (
+                            <ul className="projects-list">
+                              {recentRuns.map((run) => (
+                                <li key={run.id} className="project-item">
+                                  <div className="project-name">
+                                    {run.scenario_name || "Без сценария"}
+                                    {run.is_baseline && <span className="badge badge-baseline">Базовый</span>}
+                                  </div>
+                                  <div className="project-updated muted">{formatDateTime(run.started_at)}</div>
+                                  {run.status && <div className="chip small">{run.status}</div>}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="empty-state">Нет запусков.</div>
+                          )}
+                        </section>
 
             <section className="section">
               <div className="section-heading">
                 <h2>Сценарии</h2>
-                <p className="section-subtitle">Всего: {summary?.scenarios_total ?? data.scenarios.length ?? 0}</p>
+                <p className="section-subtitle">Всего: {summary?.scenarios_total ?? scenarios.length ?? 0}</p>
               </div>
-              {data.scenarios.length ? (
-                <ul className="projects-list">
-                  {data.scenarios.map((scenario) => (
-                    <li key={scenario.id} className="project-item">
-                      <div className="project-name">
-                        {scenario.name}
-                        {scenario.is_baseline && <span className="badge badge-baseline">Базовый</span>}
-                      </div>
-                      {scenario.description && (
-                        <div className="project-updated muted">{scenario.description}</div>
-                      )}
-                      {projectId && (
-                        <div className="actions" style={{ gap: 8 }}>
-                          <button
-                            className="btn secondary"
-                            type="button"
-                            onClick={() => handleRunScenario(scenario.id)}
-                          >
-                            Запустить по сценарию
-                          </button>
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              {scenarioActionError && <div className="general-error">{scenarioActionError}</div>}
+              {scenarios.length ? (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Название</th>
+                      <th>Версия схемы</th>
+                      <th>Baseline</th>
+                      <th>Обновлено</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scenarios.map((scenario) => {
+                      const versionLabel =
+                        flowsheetVersionNameById[String(scenario.flowsheet_version_id)] || String(scenario.flowsheet_version_id);
+                      return (
+                        <tr key={scenario.id}>
+                          <td>
+                            <div className="project-name">
+                              {scenario.name}
+                              {scenario.is_baseline && <span className="badge badge-baseline">Baseline</span>}
+                            </div>
+                            {scenario.description && <div className="muted">{scenario.description}</div>}
+                          </td>
+                          <td>{versionLabel}</td>
+                          <td>{scenario.is_baseline ? "Да" : "Нет"}</td>
+                          <td>{formatDateTime(scenario.updated_at || scenario.created_at)}</td>
+                          <td>
+                            <div className="actions" style={{ gap: 8 }}>
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                onClick={() => handleRunScenario(scenario.id)}
+                              >
+                                Запустить расчёт
+                              </button>
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                onClick={() => handleRunScenario(scenario.id)}
+                              >
+                                Расчёты
+                              </button>
+                              {!scenario.is_baseline && (
+                                <button
+                                  className="btn"
+                                  type="button"
+                                  onClick={() => handleSetBaseline(scenario.id)}
+                                  disabled={baselineUpdatingId === scenario.id}
+                                >
+                                  Сделать baseline
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               ) : (
-                <div className="empty-state">Нет сценариев.</div>
+                <div className="empty-state">Пока нет сценариев в проекте.</div>
               )}
             </section>
 
             <section className="section">
-              <div className="section-heading">
-                <h2>Версии схем</h2>
-                <p className="section-subtitle">
-                  Всего: {summary?.flowsheet_versions_total ?? data.flowsheet_versions.length ?? 0}
-                </p>
-              </div>
-              {data.flowsheet_versions.length ? (
-                <ul className="projects-list">
-                  {data.flowsheet_versions.map((version) => (
-                    <li key={version.id} className="project-item">
-                      <div className="project-name">{version.version_label || "Неизвестная версия"}</div>
-                      <div className="project-updated muted">ID: {version.id}</div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="empty-state">Нет прикрепленных версий схем.</div>
-              )}
-            </section>
+                          <div className="section-heading">
+                            <h2>Версии схем</h2>
+                            <p className="section-subtitle">
+                              Всего: {summary?.flowsheet_versions_total ?? data.flowsheet_versions.length ?? 0}
+                            </p>
+                          </div>
+                          {data.flowsheet_versions.length ? (
+                            <ul className="projects-list">
+                              {data.flowsheet_versions.map((version) => (
+                                <li key={version.id} className="project-item">
+                                  <div className="project-name">{version.version_label || "Неизвестная версия"}</div>
+                                  <div className="project-updated muted">ID: {version.id}</div>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="empty-state">Нет прикрепленных версий схем.</div>
+                          )}
+                        </section>
           </>
         )}
       </div>

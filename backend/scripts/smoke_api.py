@@ -165,6 +165,34 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
 
     scenario_name = scenario_json.get("name") if isinstance(scenario_json, dict) else scenario_payload["name"]
 
+    status, body = _request(
+        f"/api/calc-scenarios/{scenario_id}/set-baseline", method="POST", base_url=base_url
+    )
+    baseline_json = _parse_json(body)
+    ok_baseline = status == 200 and isinstance(baseline_json, dict) and baseline_json.get("is_baseline") is True
+    add_check(
+        f"POST /api/calc-scenarios/{scenario_id}/set-baseline",
+        status,
+        ok_baseline,
+        body if not ok_baseline else f"scenario_id={scenario_id}",
+    )
+    if not ok_baseline:
+        return _print_results(checks)
+
+    status, body = _request(f"/api/projects/{project_id}/dashboard", base_url=base_url)
+    baseline_dash = _parse_json(body)
+    baseline_scenarios = baseline_dash.get("scenarios") if isinstance(baseline_dash, dict) else None
+    baseline_ids = {str(item.get("id")) for item in baseline_scenarios or [] if item.get("is_baseline")}
+    ok_baseline_visible = status == 200 and str(scenario_id) in baseline_ids
+    add_check(
+        "Baseline visible in dashboard scenarios",
+        status,
+        ok_baseline_visible,
+        body if not ok_baseline_visible else f"baseline_id={scenario_id}",
+    )
+    if not ok_baseline_visible:
+        return _print_results(checks)
+
     plant_id_value = project_block.get("plant_id") if isinstance(project_block, dict) else project_plant_id
     payload = {
         "model_version": "grind_mvp_v1",
@@ -255,12 +283,35 @@ def run_smoke(base_url: str = DEFAULT_BASE_URL) -> int:
         f"new_run_id={new_run_id}",
     )
 
-    scenario_ids_after = {str(item.get("id")) for item in scenarios_after if isinstance(item, dict)}
-    ok_scenario_listed = str(scenario_id) in scenario_ids_after
+    recent_with_context = [
+        item for item in recent_runs if isinstance(item, dict) and str(item.get("id")) == str(new_run_id)
+    ]
+    ok_recent_context = bool(
+        recent_with_context and str(recent_with_context[0].get("scenario_id")) == str(scenario_id)
+    )
+    add_check(
+        "recent_calc_runs keeps scenario context",
+        status,
+        ok_recent_context,
+        f"scenario_id={scenario_id} run_id={new_run_id}",
+    )
+
+    scenarios_by_id = {
+        str(item.get("id")): item for item in scenarios_after if isinstance(item, dict) and item.get("id") is not None
+    }
+    scenario_entry = scenarios_by_id.get(str(scenario_id))
+    ok_scenario_listed = scenario_entry is not None
     add_check(
         "scenarios list contains created scenario",
         status,
         ok_scenario_listed,
+        f"scenario_id={scenario_id}",
+    )
+    ok_scenario_baseline = bool(scenario_entry and scenario_entry.get("is_baseline") is True)
+    add_check(
+        "scenario baseline flag present",
+        status,
+        ok_scenario_baseline,
         f"scenario_id={scenario_id}",
     )
 
