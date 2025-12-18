@@ -1,0 +1,5 @@
+- [ ] scripts/dev.ps1 -SmokeOnly passed
+- [ ] scripts/dev.ps1 -ResetDb passed (if changes affect DB/API/front journey)
+- [ ] npm --prefix frontend run build passed (if frontend touched)
+- [ ] No artifacts committed (node_modules/dist/.vite/__pycache__/.pyc/.db)
+- [ ] Brief note of what changed + how to test
