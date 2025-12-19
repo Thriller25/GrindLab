@@ -118,10 +118,10 @@ export const ProjectPage = () => {
     setBaselineUpdatingId(scenarioId);
     try {
       await setCalcScenarioBaseline(scenarioId);
-      setScenarioActionMessage("Baseline updated");
+      setScenarioActionMessage("Базовый сценарий обновлён.");
       loadDashboard();
     } catch (err) {
-      setScenarioActionError(getErrorMessage(err, "Unable to update baseline for scenario"));
+      setScenarioActionError(getErrorMessage(err, "Не удалось обновить базовый сценарий. Попробуйте ещё раз."));
     } finally {
       setBaselineUpdatingId(null);
     }
@@ -148,7 +148,7 @@ export const ProjectPage = () => {
     if (!renameModal) return;
     const trimmedName = renameModal.name.trim();
     if (!trimmedName) {
-      setScenarioActionError("Scenario name is required");
+      setScenarioActionError("Введите название сценария");
       return;
     }
     setScenarioSaving(true);
@@ -158,11 +158,11 @@ export const ProjectPage = () => {
         name: trimmedName,
         description: renameModal.description.trim() ? renameModal.description.trim() : undefined,
       });
-      setScenarioActionMessage("Scenario renamed");
+      setScenarioActionMessage("Сценарий переименован.");
       setRenameModal(null);
       loadDashboard();
     } catch (err) {
-      setScenarioActionError(getErrorMessage(err, "Unable to rename scenario"));
+      setScenarioActionError(getErrorMessage(err, "Не удалось переименовать сценарий. Попробуйте ещё раз."));
     } finally {
       setScenarioSaving(false);
     }
@@ -175,11 +175,16 @@ export const ProjectPage = () => {
     setScenarioDeleting(true);
     try {
       await deleteCalcScenario(deleteCandidate.id);
-      setScenarioActionMessage("Scenario deleted");
+      setScenarioActionMessage("Сценарий удалён.");
       setDeleteCandidate(null);
       loadDashboard();
     } catch (err) {
-      setScenarioActionError(getErrorMessage(err, "Unable to delete scenario"));
+      const status = (err as any)?.response?.status;
+      if (status === 409) {
+        setScenarioActionError("Нельзя удалить сценарий: по нему есть расчёты.");
+      } else {
+        setScenarioActionError("Не удалось удалить сценарий. Попробуйте ещё раз.");
+      }
     } finally {
       setScenarioDeleting(false);
     }
@@ -292,7 +297,7 @@ export const ProjectPage = () => {
                           <td>
                             <div className="project-name">
                               {scenario.name}
-                              {scenario.is_baseline && <span className="badge badge-baseline">Baseline</span>}
+                              {scenario.is_baseline && <span className="badge badge-baseline">Базовый</span>}
                             </div>
                             {scenario.description && <div className="muted">{scenario.description}</div>}
                           </td>
@@ -372,26 +377,26 @@ export const ProjectPage = () => {
       {renameModal && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>Rename scenario</h3>
+            <h3>Переименовать сценарий</h3>
             <label>
-              Name
+              Название
               <input
                 value={renameModal.name}
                 onChange={(e) => setRenameModal({ ...renameModal, name: e.target.value })}
-                placeholder="Scenario name"
+                placeholder="Название сценария"
               />
             </label>
             <label>
-              Description
+              Описание
               <textarea
                 value={renameModal.description}
                 onChange={(e) => setRenameModal({ ...renameModal, description: e.target.value })}
-                placeholder="Optional description"
+                placeholder="Необязательное описание"
               />
             </label>
             <div className="actions modal-actions">
               <button className="btn secondary" type="button" onClick={() => setRenameModal(null)} disabled={scenarioSaving}>
-                Cancel
+                Отмена
               </button>
               <button
                 className="btn"
@@ -399,7 +404,7 @@ export const ProjectPage = () => {
                 onClick={handleRenameScenario}
                 disabled={scenarioSaving || !renameModal.name.trim()}
               >
-                Save
+                Сохранить
               </button>
             </div>
           </div>
@@ -408,17 +413,17 @@ export const ProjectPage = () => {
       {deleteCandidate && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>Delete scenario</h3>
-            <p className="section-subtitle">Delete "{deleteCandidate.name}" from this project?</p>
+            <h3>Удалить сценарий</h3>
+            <p className="section-subtitle">Удалить сценарий «{deleteCandidate.name}» из проекта?</p>
             {deleteCandidate.is_baseline && (
-              <p className="section-subtitle">Scenario is baseline; it will be cleared on delete.</p>
+              <p className="section-subtitle">Это базовый сценарий. При удалении базовый статус будет снят.</p>
             )}
             <div className="actions modal-actions">
               <button className="btn secondary" type="button" onClick={() => setDeleteCandidate(null)} disabled={scenarioDeleting}>
-                Cancel
+                Отмена
               </button>
               <button className="btn danger" type="button" onClick={handleDeleteScenario} disabled={scenarioDeleting}>
-                Delete
+                Удалить
               </button>
             </div>
           </div>
