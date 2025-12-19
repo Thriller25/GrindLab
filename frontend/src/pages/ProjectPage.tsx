@@ -306,7 +306,7 @@ export const ProjectPage = () => {
                                 type="button"
                                 onClick={() => handleRunScenario(scenario.id)}
                               >
-                                ????????? ??????
+                                Запустить
                               </button>
                               <button
                                 className="btn secondary"
@@ -314,7 +314,7 @@ export const ProjectPage = () => {
                                 onClick={() => handleRenameClick(scenario)}
                                 disabled={scenarioSaving}
                               >
-                                Rename
+                                Переименовать
                               </button>
                               {!scenario.is_baseline && (
                                 <button
@@ -323,7 +323,7 @@ export const ProjectPage = () => {
                                   onClick={() => handleSetBaseline(scenario.id)}
                                   disabled={baselineUpdatingId === scenario.id}
                                 >
-                                  ??????? baseline
+                                  Сделать базовым
                                 </button>
                               )}
                               <button
