@@ -4,6 +4,7 @@ import { HomePage } from "./pages/HomePage";
 import { CalcRunPage } from "./pages/CalcRunPage";
 import { CalcScenariosPage } from "./pages/CalcScenariosPage";
 import { ProjectPage } from "./pages/ProjectPage";
+import { ScenarioComparePage } from "./pages/ScenarioComparePage";
 
 export const App = () => {
   return (
@@ -14,6 +15,7 @@ export const App = () => {
         <Route path="/calc-run" element={<CalcRunPage />} />
         <Route path="/calc-scenarios" element={<CalcScenariosPage />} />
         <Route path="/projects/:projectId" element={<ProjectPage />} />
+        <Route path="/projects/:projectId/scenarios/:scenarioId/compare" element={<ScenarioComparePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

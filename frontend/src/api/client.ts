@@ -342,6 +342,33 @@ export async function fetchCalcRunById(runId: string | number): Promise<GrindMvp
   return resp.data;
 }
 
+export interface CalcRunRead {
+  id: string;
+  flowsheet_version_id: string;
+  scenario_id?: string | null;
+  scenario_name?: string | null;
+  project_id?: number | null;
+  status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  comment?: string | null;
+  error_message?: string | null;
+  input_json?: any;
+  result_json?: any;
+}
+
+export async function fetchLatestCalcRunByScenario(
+  scenarioId: string,
+  status: string | null = "success",
+): Promise<CalcRunRead> {
+  const resp = await api.get<CalcRunRead>(`/api/calc-runs/latest/by-scenario/${scenarioId}`, {
+    params: { status: status ?? undefined },
+  });
+  return resp.data;
+}
+
 export async function fetchCalcRunBaselineComparison(
   calcRunId: string | number,
 ): Promise<CalcRunBaselineComparison> {

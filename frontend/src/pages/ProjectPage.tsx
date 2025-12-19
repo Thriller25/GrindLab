@@ -30,7 +30,7 @@ export const ProjectPage = () => {
 
   const getErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as any)?.response?.data?.detail;
-    if (typeof detail === "string") {
+    if (typeof detail === "string" && /[а-яА-ЯёЁ]/.test(detail)) {
       return detail;
     }
     return fallback;
@@ -52,6 +52,7 @@ export const ProjectPage = () => {
       return new Date(bDate).getTime() - new Date(aDate).getTime();
     });
   }, [data]);
+  const baselineScenario = useMemo(() => scenarios.find((s) => s.is_baseline) ?? null, [scenarios]);
 
   const formatDateTime = (value?: string | null) => {
     if (!value) return "-";
@@ -66,7 +67,7 @@ export const ProjectPage = () => {
 
   const loadDashboard = useCallback(() => {
     if (!projectId) {
-      setError("Project id is required");
+      setError("Не указан идентификатор проекта");
       setData(null);
       return;
     }
@@ -109,6 +110,11 @@ export const ProjectPage = () => {
   const handleRunScenario = (scenarioId: string) => {
     if (!projectId) return;
     navigate(`/calc-run?projectId=${projectId}&scenarioId=${scenarioId}`);
+  };
+
+  const handleCompareScenario = (scenarioId: string) => {
+    if (!projectId) return;
+    navigate(`/projects/${projectId}/scenarios/${scenarioId}/compare`);
   };
 
   const handleSetBaseline = async (scenarioId: string) => {
@@ -181,7 +187,7 @@ export const ProjectPage = () => {
     } catch (err) {
       const status = (err as any)?.response?.status;
       if (status === 409) {
-        setScenarioActionError("Нельзя удалить сценарий: по нему есть расчёты.");
+        setScenarioActionError("Нельзя удалить сценарий: по нему уже есть расчёты.");
       } else {
         setScenarioActionError("Не удалось удалить сценарий. Попробуйте ещё раз.");
       }
@@ -195,21 +201,21 @@ export const ProjectPage = () => {
       <div className="card wide-card">
         <div className="page-header">
           <div>
-            <h1>{data?.project?.name ?? "Project"}</h1>
+            <h1>{data?.project?.name ?? "Проект"}</h1>
             {data?.project?.description && <p className="muted">{data.project.description}</p>}
           </div>
           <div className="actions">
             <button className="btn secondary" type="button" onClick={loadDashboard} disabled={isLoading}>
-              Refresh
+              Обновить
             </button>
             {projectId && (
               <button className="btn secondary" type="button" onClick={handleCreateScenario}>
-                Create scenario
+                Создать сценарий
               </button>
             )}
             {projectId && (
               <button className="btn" type="button" onClick={handleStartRun}>
-                Start run for project
+                Запустить расчёт проекта
               </button>
             )}
             <BackToHomeButton />
@@ -283,7 +289,7 @@ export const ProjectPage = () => {
                     <tr>
                       <th>Название</th>
                       <th>Версия схемы</th>
-                      <th>Baseline</th>
+                      <th>Базовый</th>
                       <th>Обновлено</th>
                       <th>Действия</th>
                     </tr>
@@ -323,6 +329,21 @@ export const ProjectPage = () => {
                               </button>
                               {!scenario.is_baseline && (
                                 <button
+                                  className="btn secondary"
+                                  type="button"
+                                  onClick={() => handleCompareScenario(scenario.id)}
+                                  disabled={!baselineScenario}
+                                  title={
+                                    baselineScenario
+                                      ? undefined
+                                      : "Назначьте базовый сценарий, чтобы сравнить результаты"
+                                  }
+                                >
+                                  Сравнить с базовым
+                                </button>
+                              )}
+                              {!scenario.is_baseline && (
+                                <button
                                   className="btn"
                                   type="button"
                                   onClick={() => handleSetBaseline(scenario.id)}
@@ -337,7 +358,7 @@ export const ProjectPage = () => {
                                 onClick={() => handleDeleteClick(scenario)}
                                 disabled={scenarioDeleting && deleteCandidate?.id === scenario.id}
                               >
-                                Delete
+                                Удалить
                               </button>
                             </div>
                           </td>
@@ -413,7 +434,7 @@ export const ProjectPage = () => {
       {deleteCandidate && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>Удалить сценарий</h3>
+            <h3>Удаление сценария</h3>
             <p className="section-subtitle">Удалить сценарий «{deleteCandidate.name}» из проекта?</p>
             {deleteCandidate.is_baseline && (
               <p className="section-subtitle">Это базовый сценарий. При удалении базовый статус будет снят.</p>
