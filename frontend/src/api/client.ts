@@ -448,3 +448,15 @@ export async function setCalcScenarioBaseline(scenarioId: string): Promise<CalcS
   const resp = await api.post<CalcScenario>(`/api/calc-scenarios/${scenarioId}/set-baseline`);
   return resp.data;
 }
+
+export async function updateCalcScenario(
+  scenarioId: string,
+  payload: { name?: string; description?: string | null },
+): Promise<CalcScenario> {
+  const resp = await api.patch<CalcScenario>(`/api/calc-scenarios/${scenarioId}`, payload);
+  return resp.data;
+}
+
+export async function deleteCalcScenario(scenarioId: string): Promise<void> {
+  await api.delete(`/api/calc-scenarios/${scenarioId}`);
+}

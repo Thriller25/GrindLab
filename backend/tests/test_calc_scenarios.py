@@ -17,12 +17,6 @@ def test_calc_scenario_crud(client: TestClient):
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
     project_id = create_project(client, plant_id)
     link_project_to_version(client, project_id, flowsheet_version_id)
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, flowsheet_version_id)
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, flowsheet_version_id)
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, flowsheet_version_id)
 
     payload = {
         "flowsheet_version_id": flowsheet_version_id,
@@ -35,6 +29,7 @@ def test_calc_scenario_crud(client: TestClient):
     assert resp.status_code == 201
     scenario = resp.json()
     scenario_id = scenario["id"]
+    scenario_updated_at = scenario["updated_at"]
     assert scenario["name"] == payload["name"]
     assert scenario["flowsheet_version_id"] == flowsheet_version_id
     assert scenario["default_input_json"]["feed_tph"] == payload["default_input_json"]["feed_tph"]
@@ -61,9 +56,76 @@ def test_calc_scenario_crud(client: TestClient):
     updated = resp.json()
     assert updated["name"] == update_payload["name"]
     assert updated["description"] == update_payload["description"]
+    assert updated["updated_at"] != scenario_updated_at
 
     resp = client.delete(f"/api/calc-scenarios/{scenario_id}")
     assert resp.status_code in (200, 204)
+
+
+def test_delete_calc_scenario_blocked_when_runs_exist(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+
+    scenario_payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "name": "Scenario with runs",
+        "default_input_json": {"feed_tph": 150, "target_p80_microns": 180},
+    }
+    resp = client.post("/api/calc-scenarios", json=scenario_payload)
+    assert resp.status_code == 201
+    scenario_id = resp.json()["id"]
+
+    run_resp = client.post(f"/api/calc/flowsheet-run/by-scenario/{scenario_id}")
+    assert run_resp.status_code in (200, 201)
+
+    delete_resp = client.delete(f"/api/calc-scenarios/{scenario_id}")
+    assert delete_resp.status_code == 409
+    assert delete_resp.json()["detail"] == "Scenario has runs; cannot delete"
+
+
+def test_delete_baseline_scenario_clears_project_baseline(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+
+    base_payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "name": "Baseline scenario",
+        "default_input_json": {"feed_tph": 160, "target_p80_microns": 185},
+    }
+    secondary_payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "name": "Secondary scenario",
+        "default_input_json": {"feed_tph": 170, "target_p80_microns": 190},
+    }
+    base_resp = client.post("/api/calc-scenarios", json=base_payload)
+    assert base_resp.status_code == 201
+    baseline_id = base_resp.json()["id"]
+    secondary_resp = client.post("/api/calc-scenarios", json=secondary_payload)
+    assert secondary_resp.status_code == 201
+    secondary_id = secondary_resp.json()["id"]
+
+    set_resp = client.post(f"/api/calc-scenarios/{baseline_id}/set-baseline")
+    assert set_resp.status_code == 200
+    assert set_resp.json()["is_baseline"] is True
+
+    delete_resp = client.delete(f"/api/calc-scenarios/{baseline_id}")
+    assert delete_resp.status_code in (200, 204)
+
+    list_resp = client.get(f"/api/calc-scenarios/by-project/{project_id}")
+    assert list_resp.status_code == 200
+    list_body = list_resp.json()
+    assert list_body["total"] == 1
+    assert list_body["items"][0]["id"] == secondary_id
+    assert list_body["items"][0]["is_baseline"] is False
 
 
 def test_calc_run_by_scenario_happy_path(client: TestClient):
@@ -156,6 +218,8 @@ def test_flowsheet_version_overview_with_scenarios_and_latest_runs(client: TestC
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
 
     scenario_payloads = [
         {
@@ -212,8 +276,6 @@ def test_clone_flowsheet_version_with_scenarios(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     original_version_id = create_flowsheet_version(client, flowsheet_id)
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, original_version_id)
     project_id = create_project(client, plant_id)
     link_project_to_version(client, project_id, original_version_id)
 
@@ -282,6 +344,8 @@ def test_clone_flowsheet_version_without_scenarios(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     original_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, original_version_id)
 
     payload = {
         "flowsheet_version_id": original_version_id,
@@ -375,6 +439,8 @@ def test_unset_baseline_scenario(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
 
     payload = {
         "flowsheet_version_id": flowsheet_version_id,

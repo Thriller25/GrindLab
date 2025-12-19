@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import BackToHomeButton from "../components/BackToHomeButton";
-import { fetchProjectDashboard, ProjectDashboardResponse, setCalcScenarioBaseline } from "../api/client";
+import {
+  CalcScenario,
+  deleteCalcScenario,
+  fetchProjectDashboard,
+  ProjectDashboardResponse,
+  setCalcScenarioBaseline,
+  updateCalcScenario,
+} from "../api/client";
 
 export const ProjectPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -11,10 +18,23 @@ export const ProjectPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scenarioActionError, setScenarioActionError] = useState<string | null>(null);
+  const [scenarioActionMessage, setScenarioActionMessage] = useState<string | null>(null);
+  const [renameModal, setRenameModal] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<CalcScenario | null>(null);
+  const [scenarioSaving, setScenarioSaving] = useState(false);
+  const [scenarioDeleting, setScenarioDeleting] = useState(false);
   const [baselineUpdatingId, setBaselineUpdatingId] = useState<string | null>(null);
   const [refreshPending, setRefreshPending] = useState(
     () => new URLSearchParams(location.search).get("refresh") === "1",
   );
+
+  const getErrorMessage = (err: unknown, fallback: string) => {
+    const detail = (err as any)?.response?.data?.detail;
+    if (typeof detail === "string") {
+      return detail;
+    }
+    return fallback;
+  };
 
   const recentRuns = useMemo(() => data?.recent_calc_runs ?? [], [data]);
   const flowsheetVersionNameById = useMemo(() => {
@@ -94,12 +114,14 @@ export const ProjectPage = () => {
   const handleSetBaseline = async (scenarioId: string) => {
     if (!projectId) return;
     setScenarioActionError(null);
+    setScenarioActionMessage(null);
     setBaselineUpdatingId(scenarioId);
     try {
       await setCalcScenarioBaseline(scenarioId);
+      setScenarioActionMessage("Baseline updated");
       loadDashboard();
-    } catch {
-      setScenarioActionError("Не удалось обновить baseline для сценария");
+    } catch (err) {
+      setScenarioActionError(getErrorMessage(err, "Unable to update baseline for scenario"));
     } finally {
       setBaselineUpdatingId(null);
     }
@@ -108,6 +130,59 @@ export const ProjectPage = () => {
   const handleCreateScenario = () => {
     if (!projectId) return;
     navigate(`/calc-scenarios?projectId=${projectId}`);
+  };
+
+  const handleRenameClick = (scenario: CalcScenario) => {
+    setScenarioActionError(null);
+    setScenarioActionMessage(null);
+    setRenameModal({ id: scenario.id, name: scenario.name, description: scenario.description || "" });
+  };
+
+  const handleDeleteClick = (scenario: CalcScenario) => {
+    setScenarioActionError(null);
+    setScenarioActionMessage(null);
+    setDeleteCandidate(scenario);
+  };
+
+  const handleRenameScenario = async () => {
+    if (!renameModal) return;
+    const trimmedName = renameModal.name.trim();
+    if (!trimmedName) {
+      setScenarioActionError("Scenario name is required");
+      return;
+    }
+    setScenarioSaving(true);
+    setScenarioActionError(null);
+    try {
+      await updateCalcScenario(renameModal.id, {
+        name: trimmedName,
+        description: renameModal.description.trim() ? renameModal.description.trim() : undefined,
+      });
+      setScenarioActionMessage("Scenario renamed");
+      setRenameModal(null);
+      loadDashboard();
+    } catch (err) {
+      setScenarioActionError(getErrorMessage(err, "Unable to rename scenario"));
+    } finally {
+      setScenarioSaving(false);
+    }
+  };
+
+  const handleDeleteScenario = async () => {
+    if (!deleteCandidate) return;
+    setScenarioActionError(null);
+    setScenarioActionMessage(null);
+    setScenarioDeleting(true);
+    try {
+      await deleteCalcScenario(deleteCandidate.id);
+      setScenarioActionMessage("Scenario deleted");
+      setDeleteCandidate(null);
+      loadDashboard();
+    } catch (err) {
+      setScenarioActionError(getErrorMessage(err, "Unable to delete scenario"));
+    } finally {
+      setScenarioDeleting(false);
+    }
   };
 
   return (
@@ -195,7 +270,8 @@ export const ProjectPage = () => {
                 <h2>Сценарии</h2>
                 <p className="section-subtitle">Всего: {summary?.scenarios_total ?? scenarios.length ?? 0}</p>
               </div>
-              {scenarioActionError && <div className="general-error">{scenarioActionError}</div>}
+              {scenarioActionError && <div className="alert error">{scenarioActionError}</div>}
+              {scenarioActionMessage && <div className="alert success">{scenarioActionMessage}</div>}
               {scenarios.length ? (
                 <table className="table">
                   <thead>
@@ -230,14 +306,15 @@ export const ProjectPage = () => {
                                 type="button"
                                 onClick={() => handleRunScenario(scenario.id)}
                               >
-                                Запустить расчёт
+                                ????????? ??????
                               </button>
                               <button
                                 className="btn secondary"
                                 type="button"
-                                onClick={() => handleRunScenario(scenario.id)}
+                                onClick={() => handleRenameClick(scenario)}
+                                disabled={scenarioSaving}
                               >
-                                Расчёты
+                                Rename
                               </button>
                               {!scenario.is_baseline && (
                                 <button
@@ -246,9 +323,17 @@ export const ProjectPage = () => {
                                   onClick={() => handleSetBaseline(scenario.id)}
                                   disabled={baselineUpdatingId === scenario.id}
                                 >
-                                  Сделать baseline
+                                  ??????? baseline
                                 </button>
                               )}
+                              <button
+                                className="btn danger"
+                                type="button"
+                                onClick={() => handleDeleteClick(scenario)}
+                                disabled={scenarioDeleting && deleteCandidate?.id === scenario.id}
+                              >
+                                Delete
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -284,6 +369,61 @@ export const ProjectPage = () => {
           </>
         )}
       </div>
+      {renameModal && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Rename scenario</h3>
+            <label>
+              Name
+              <input
+                value={renameModal.name}
+                onChange={(e) => setRenameModal({ ...renameModal, name: e.target.value })}
+                placeholder="Scenario name"
+              />
+            </label>
+            <label>
+              Description
+              <textarea
+                value={renameModal.description}
+                onChange={(e) => setRenameModal({ ...renameModal, description: e.target.value })}
+                placeholder="Optional description"
+              />
+            </label>
+            <div className="actions modal-actions">
+              <button className="btn secondary" type="button" onClick={() => setRenameModal(null)} disabled={scenarioSaving}>
+                Cancel
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={handleRenameScenario}
+                disabled={scenarioSaving || !renameModal.name.trim()}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteCandidate && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Delete scenario</h3>
+            <p className="section-subtitle">Delete "{deleteCandidate.name}" from this project?</p>
+            {deleteCandidate.is_baseline && (
+              <p className="section-subtitle">Scenario is baseline; it will be cleared on delete.</p>
+            )}
+            <div className="actions modal-actions">
+              <button className="btn secondary" type="button" onClick={() => setDeleteCandidate(null)} disabled={scenarioDeleting}>
+                Cancel
+              </button>
+              <button className="btn danger" type="button" onClick={handleDeleteScenario} disabled={scenarioDeleting}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

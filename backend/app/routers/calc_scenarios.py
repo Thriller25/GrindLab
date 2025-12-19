@@ -32,6 +32,22 @@ def _get_project_or_404(db: Session, project_id: int) -> models.Project:
     return project
 
 
+def _check_project_read_access(db: Session, project: models.Project, user: models.User | None) -> None:
+    if project.owner_user_id is None:
+        return
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    if project.owner_user_id == user.id:
+        return
+    membership = (
+        db.query(models.ProjectMember)
+        .filter(models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id)
+        .first()
+    )
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
+
 def _ensure_version_linked_to_project(db: Session, project_id: int, flowsheet_version_id: uuid.UUID) -> None:
     link_exists = (
         db.query(models.ProjectFlowsheetVersion)
@@ -141,11 +157,14 @@ def list_calc_scenarios_by_project(
 
 @router.patch("/{scenario_id}", response_model=CalcScenarioRead)
 def update_calc_scenario(
-    scenario_id: uuid.UUID, payload: CalcScenarioUpdate, db: Session = Depends(get_db)
+    scenario_id: uuid.UUID,
+    payload: CalcScenarioUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> CalcScenarioRead:
-    scenario = db.get(models.CalcScenario, scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CalcScenario not found")
+    scenario = get_calc_scenario_or_404(db, scenario_id)
+    project = _get_project_or_404(db, scenario.project_id)
+    _check_project_read_access(db, project, current_user)
 
     update_data = payload.model_dump(exclude_unset=True)
     if "default_input_json" in update_data:
@@ -176,6 +195,8 @@ def set_baseline_scenario(
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> CalcScenarioRead:
     scenario = get_calc_scenario_or_404(db, scenario_id)
+    project = _get_project_or_404(db, scenario.project_id)
+    _check_project_read_access(db, project, current_user)
     _apply_baseline(db, scenario, True)
     db.commit()
     db.refresh(scenario)
@@ -189,6 +210,8 @@ def unset_baseline_scenario(
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> CalcScenarioRead:
     scenario = get_calc_scenario_or_404(db, scenario_id)
+    project = _get_project_or_404(db, scenario.project_id)
+    _check_project_read_access(db, project, current_user)
     _apply_baseline(db, scenario, False)
     db.commit()
     db.refresh(scenario)
@@ -196,10 +219,26 @@ def unset_baseline_scenario(
 
 
 @router.delete("/{scenario_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_calc_scenario(scenario_id: uuid.UUID, db: Session = Depends(get_db)):
-    scenario = db.get(models.CalcScenario, scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CalcScenario not found")
+def delete_calc_scenario(
+    scenario_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+):
+    scenario = get_calc_scenario_or_404(db, scenario_id)
+    project = _get_project_or_404(db, scenario.project_id)
+    _check_project_read_access(db, project, current_user)
+
+    has_runs = (
+        db.query(models.CalcRun.id).filter(models.CalcRun.scenario_id == scenario.id).limit(1).first() is not None
+    )
+    if has_runs:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Scenario has runs; cannot delete",
+        )
+
+    if scenario.is_baseline:
+        _clear_project_baseline(db, project_id=scenario.project_id, exclude_id=scenario.id)
     db.delete(scenario)
     db.commit()
     return None
