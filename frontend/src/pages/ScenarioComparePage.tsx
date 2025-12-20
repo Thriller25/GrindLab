@@ -40,6 +40,8 @@ const DELTA_EPSILON = 1e-6;
 const BASELINE_EPSILON = 1e-9;
 
 const KPI_GOAL_STORAGE_PREFIX = "grindlab.kpiGoals.v1.project.";
+const storageKeyForGoals = (projectId: string, flowsheetVersionId: string | number) =>
+  `${KPI_GOAL_STORAGE_PREFIX}${projectId}.flowsheet.${flowsheetVersionId}`;
 
 const UNKNOWN_GOAL: KpiGoal = { type: "unknown" };
 
@@ -144,10 +146,10 @@ const ensureGoalsForMetrics = (goals: Record<string, KpiGoal>, metrics: MetricCo
   return changed ? next : goals;
 };
 
-const loadStoredGoals = (projectId: string): Record<string, KpiGoal> => {
+const loadStoredGoals = (storageKey: string): Record<string, KpiGoal> => {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(`${KPI_GOAL_STORAGE_PREFIX}${projectId}`);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object") return {};
@@ -160,10 +162,10 @@ const loadStoredGoals = (projectId: string): Record<string, KpiGoal> => {
   }
 };
 
-const persistGoals = (projectId: string, goals: Record<string, KpiGoal>) => {
+const persistGoals = (storageKey: string, goals: Record<string, KpiGoal>) => {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(`${KPI_GOAL_STORAGE_PREFIX}${projectId}`, JSON.stringify(goals));
+    window.localStorage.setItem(storageKey, JSON.stringify(goals));
   } catch {
     // ignore storage errors
   }
@@ -175,7 +177,7 @@ const extractRange = (goal: KpiGoal) => {
   const max = toNumberOrNull(goal.max);
   if (min == null || max == null) return null;
   if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  if (min > max) return null;
+  if (min >= max) return null;
   return { min, max };
 };
 
@@ -186,6 +188,16 @@ const describeGoal = (goal: KpiGoal) => {
     return `${GOAL_TYPE_LABELS[goal.type]} (диапазон не задан)`;
   }
   return GOAL_TYPE_LABELS[goal.type] ?? GOAL_TYPE_LABELS.unknown;
+};
+
+const validateRangeGoal = (goal: KpiGoal): string | null => {
+  if (goal.type !== "target_range") return null;
+  const min = toNumberOrNull(goal.min);
+  const max = toNumberOrNull(goal.max);
+  if (min == null || max == null) return "Укажите минимум и максимум";
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return "Значения должны быть числами";
+  if (min >= max) return "Минимум должен быть меньше максимума";
+  return null;
 };
 
 type MissingState = { message: string; allowScenarioRun?: boolean; allowBaselineRun?: boolean };
@@ -246,8 +258,11 @@ const calcVerdict = (
   scenarioValue: number | null,
   goal: KpiGoal,
 ): MetricVerdictResult => {
-  if (baseValue == null || scenarioValue == null) return { verdict: "unknown" };
-  if (goal.type === "unknown") return { verdict: "unknown" };
+  if (goal.type === "unknown") return { verdict: "unknown", reason: "Направление не задано" };
+  if (baseValue == null && scenarioValue == null) return { verdict: "unknown", reason: "Нет данных KPI для сравнения" };
+  if (baseValue == null) return { verdict: "unknown", reason: "Нет значения KPI для базового сценария" };
+  if (scenarioValue == null) return { verdict: "unknown", reason: "Нет значения KPI для сравниваемого сценария" };
+  if (baseValue === 0) return { verdict: "unknown", reason: "Базовое значение равно 0" };
   if (goal.type === "target_range") {
     const range = extractRange(goal);
     if (!range) return { verdict: "unknown", reason: "Диапазон не задан" };
@@ -332,6 +347,17 @@ export const ScenarioComparePage = () => {
       return acc;
     }, {});
   }, [dashboard?.flowsheet_versions]);
+
+  const flowsheetVersionId = useMemo(() => {
+    if (selectedScenario?.flowsheet_version_id) return String(selectedScenario.flowsheet_version_id);
+    if (baselineScenario?.flowsheet_version_id) return String(baselineScenario.flowsheet_version_id);
+    return null;
+  }, [baselineScenario?.flowsheet_version_id, selectedScenario?.flowsheet_version_id]);
+
+  const goalsStorageKey = useMemo(() => {
+    if (!projectId || !flowsheetVersionId) return null;
+    return storageKeyForGoals(projectId, flowsheetVersionId);
+  }, [flowsheetVersionId, projectId]);
 
   useEffect(() => {
     if (!projectId || !scenarioId) {
@@ -557,27 +583,42 @@ export const ScenarioComparePage = () => {
   }, [kpiKeysInRuns]);
 
   useEffect(() => {
-    if (!projectId) {
+    if (!projectId || !goalsStorageKey) {
       setKpiGoals({});
       setGoalsReady(false);
       return;
     }
     setGoalsReady(false);
-    const stored = loadStoredGoals(projectId);
+    const stored = loadStoredGoals(goalsStorageKey);
     setKpiGoals(stored);
     setSaveMessage(null);
     setGoalsReady(true);
-  }, [projectId]);
+  }, [goalsStorageKey, projectId]);
 
   useEffect(() => {
     if (!goalsReady) return;
     setKpiGoals((prev) => ensureGoalsForMetrics(prev, allMetrics));
   }, [allMetrics, goalsReady]);
 
+  const goalValidationErrors = useMemo(
+    () =>
+      allMetrics.reduce<Record<string, string | null>>((acc, metric) => {
+        const goal = normalizeGoal(kpiGoals[metric.key] ?? metric.defaultGoal ?? UNKNOWN_GOAL);
+        acc[metric.key] = validateRangeGoal(goal);
+        return acc;
+      }, {}),
+    [allMetrics, kpiGoals],
+  );
+
+  const hasValidationErrors = useMemo(
+    () => Object.values(goalValidationErrors).some((msg) => Boolean(msg)),
+    [goalValidationErrors],
+  );
+
   useEffect(() => {
-    if (!projectId || !goalsReady) return;
-    persistGoals(projectId, kpiGoals);
-  }, [goalsReady, kpiGoals, projectId]);
+    if (!goalsStorageKey || !goalsReady || hasValidationErrors) return;
+    persistGoals(goalsStorageKey, kpiGoals);
+  }, [goalsReady, goalsStorageKey, hasValidationErrors, kpiGoals]);
 
   const selectedVersionLabel = useMemo(() => {
     if (!selectedScenario) return "—";
@@ -758,10 +799,14 @@ export const ScenarioComparePage = () => {
   };
 
   const handleSaveGoals = () => {
-    if (!projectId) return;
+    if (!goalsStorageKey) return;
+    if (hasValidationErrors) {
+      setSaveMessage("Исправьте ошибки в целевом диапазоне");
+      return;
+    }
     const ensured = ensureGoalsForMetrics(kpiGoals, allMetrics);
     setKpiGoals(ensured);
-    persistGoals(projectId, ensured);
+    persistGoals(goalsStorageKey, ensured);
     setSaveMessage("Настройки сохранены");
   };
 
@@ -879,6 +924,9 @@ export const ScenarioComparePage = () => {
                   <span className={verdictClass} title={verdictTitle}>
                     {VERDICT_LABELS[verdict]}
                   </span>
+                  {verdict === "unknown" && verdictReason && (
+                    <div className="muted" style={{ fontSize: 12 }}>{verdictReason}</div>
+                  )}
                 </td>
               </tr>
             );
@@ -1030,21 +1078,28 @@ export const ScenarioComparePage = () => {
                     </div>
                     <div className="filters-bar" style={{ alignItems: "center", gap: 8 }}>
                       <div className="actions" style={{ justifyContent: "flex-start" }}>
-                        <button className="btn" type="button" onClick={handleSaveGoals}>
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={handleSaveGoals}
+                          disabled={!goalsReady || hasValidationErrors || !goalsStorageKey}
+                        >
                           Сохранить
                         </button>
                         <button className="btn secondary" type="button" onClick={handleResetGoals}>
                           Сбросить к умолчаниям
                         </button>
                       </div>
-                      <div className="muted">Изменения применяются сразу.</div>
+                      {hasValidationErrors && (
+                        <div style={{ color: "#b91c1c", fontSize: 13 }}>Исправьте ошибки в целевых диапазонах</div>
+                      )}
+                      <div className="muted">Изменения применяются сразу. Некорректные диапазоны не сохранятся.</div>
                       {saveMessage && <div className="muted">{saveMessage}</div>}
                     </div>
                     <div className="kpi-grid">
                       {allMetrics.map((metric) => {
                         const goal = normalizeGoal(kpiGoals[metric.key] ?? metric.defaultGoal ?? UNKNOWN_GOAL);
-                        const range = extractRange(goal);
-                        const showRangeWarning = goal.type === "target_range" && !range;
+                        const goalError = goalValidationErrors[metric.key];
                         return (
                           <div
                             key={metric.key}
@@ -1087,9 +1142,11 @@ export const ScenarioComparePage = () => {
                                 </label>
                               </div>
                             )}
-                            <div className="muted">
-                              {showRangeWarning ? "Диапазон не задан" : describeGoal(goal)}
-                            </div>
+                            {goalError ? (
+                              <div style={{ color: "#b91c1c", fontSize: 13 }}>{goalError}</div>
+                            ) : (
+                              <div className="muted">{describeGoal(goal)}</div>
+                            )}
                           </div>
                         );
                       })}
