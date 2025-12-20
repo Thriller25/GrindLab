@@ -10,24 +10,18 @@ import {
   ProjectDashboardResponse,
 } from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
+import {
+  DEFAULT_KPI_META,
+  GoalType,
+  KpiGoal,
+  ResolvedKpiMeta,
+  resolveKpiMeta,
+} from "../features/kpi/kpiRegistry";
 
-type GoalType = "higher_is_better" | "lower_is_better" | "target_range" | "unknown";
 type MetricVerdict = "better" | "worse" | "same" | "unknown";
 type VerdictFilter = "all" | "better" | "worse";
 
-type KpiGoal = {
-  type: GoalType;
-  min?: number | null;
-  max?: number | null;
-};
-
-type MetricConfig = {
-  key: string;
-  label: string;
-  digits?: number;
-  sourceKeys: string[];
-  defaultGoal: KpiGoal;
-};
+type MetricConfig = ResolvedKpiMeta;
 
 type MetricVerdictResult = {
   verdict: MetricVerdict;
@@ -59,57 +53,6 @@ const VERDICT_LABELS: Record<MetricVerdict, string> = {
   unknown: "Неизвестно",
 };
 
-const METRICS: MetricConfig[] = [
-  {
-    key: "throughput_tph",
-    label: "Производительность, т/ч",
-    defaultGoal: { type: "higher_is_better" },
-    digits: 2,
-    sourceKeys: ["throughput_tph"],
-  },
-  {
-    key: "p80_mm",
-    label: "P80 продукта, мм",
-    defaultGoal: { type: "lower_is_better" },
-    digits: 2,
-    sourceKeys: ["product_p80_mm", "p80_mm"],
-  },
-  {
-    key: "specific_energy_kwhpt",
-    label: "Удельная энергозатратность, кВт⋅ч/т",
-    defaultGoal: { type: "lower_is_better" },
-    digits: 2,
-    sourceKeys: ["specific_energy_kwh_per_t", "specific_energy_kwhpt"],
-  },
-  {
-    key: "recirc_load_pct",
-    label: "Циркуляционная нагрузка, %",
-    defaultGoal: { type: "target_range" },
-    digits: 2,
-    sourceKeys: ["circulating_load_percent", "recirc_load_pct"],
-  },
-  {
-    key: "mill_load_pct",
-    label: "Загрузка мельницы, %",
-    defaultGoal: { type: "target_range" },
-    digits: 2,
-    sourceKeys: ["mill_utilization_percent", "mill_load_pct"],
-    // TODO: пересмотреть текст при наличии уточнений по метрикам нагрузки мельницы.
-  },
-];
-
-const DEFAULT_GOALS_BY_KEY = METRICS.reduce<Record<string, KpiGoal>>((acc, metric) => {
-  acc[metric.key] = metric.defaultGoal;
-  return acc;
-}, {});
-
-const SOURCE_KEY_TO_METRIC_KEY = METRICS.reduce<Record<string, string>>((acc, metric) => {
-  metric.sourceKeys.forEach((key) => {
-    if (!acc[key]) acc[key] = metric.key;
-  });
-  return acc;
-}, {});
-
 const isGoalType = (value?: string): value is GoalType =>
   value === "higher_is_better" || value === "lower_is_better" || value === "target_range" || value === "unknown";
 
@@ -131,7 +74,7 @@ const normalizeGoal = (goal?: KpiGoal): KpiGoal => {
 const goalEquals = (a: KpiGoal | undefined, b: KpiGoal) =>
   a?.type === b.type && a?.min === b.min && a?.max === b.max;
 
-const defaultGoalForKey = (key: string) => normalizeGoal(DEFAULT_GOALS_BY_KEY[key] ?? UNKNOWN_GOAL);
+const defaultGoalForKey = (key: string) => normalizeGoal(resolveKpiMeta(key).defaultGoal ?? UNKNOWN_GOAL);
 
 const ensureGoalsForMetrics = (goals: Record<string, KpiGoal>, metrics: MetricConfig[]) => {
   let changed = false;
@@ -203,14 +146,22 @@ const validateRangeGoal = (goal: KpiGoal): string | null => {
 type MissingState = { message: string; allowScenarioRun?: boolean; allowBaselineRun?: boolean };
 type SortMode = "default" | "absDelta";
 
-const formatNumber = (value: number | null | undefined, digits = 2) =>
-  value == null ? "—" : value.toFixed(digits);
+const MISSING_VALUE_TEXT = "—";
 
-const formatDelta = (value: number | null, digits = 2) => {
-  if (value == null) return "—";
+const metricLabelWithUnit = (metric: MetricConfig) =>
+  metric.unit ? `${metric.label}, ${metric.unit}` : metric.label;
+
+const formatNumber = (value: number | null | undefined, precision: number) =>
+  value == null ? MISSING_VALUE_TEXT : value.toFixed(precision);
+
+const formatDelta = (value: number | null, precision: number) => {
+  if (value == null) return MISSING_VALUE_TEXT;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(digits)}`;
+  return `${sign}${value.toFixed(precision)}`;
 };
+
+const formatPercentDelta = (value: number | null, precision: number) =>
+  value == null ? MISSING_VALUE_TEXT : `${formatDelta(value, precision)}%`;
 
 const shortRunId = (id?: string | null) => {
   if (!id) return null;
@@ -227,7 +178,7 @@ const formatDateTime = (value?: string | null) =>
         hour: "2-digit",
         minute: "2-digit",
       })
-    : "—";
+    : MISSING_VALUE_TEXT;
 
 const kpiValue = (run: GrindMvpRunDetail | null, keys: string[]): number | null => {
   const kpi = (run?.result?.kpi ?? {}) as Record<string, unknown>;
@@ -572,12 +523,22 @@ export const ScenarioComparePage = () => {
 
   const allMetrics = useMemo<MetricConfig[]>(() => {
     const map = new Map<string, MetricConfig>();
-    METRICS.forEach((metric) => map.set(metric.key, metric));
+    DEFAULT_KPI_META.forEach((meta) => {
+      const resolved = resolveKpiMeta(meta.key);
+      map.set(resolved.key, resolved);
+    });
+
     kpiKeysInRuns.forEach((key) => {
-      const knownMetricKey = SOURCE_KEY_TO_METRIC_KEY[key];
-      if (knownMetricKey && map.has(knownMetricKey)) return;
-      if (map.has(key)) return;
-      map.set(key, { key, label: key, defaultGoal: UNKNOWN_GOAL, digits: 2, sourceKeys: [key] });
+      const resolved = resolveKpiMeta(key);
+      const existing = map.get(resolved.key);
+      if (existing) {
+        const mergedKeys = Array.from(new Set([...existing.sourceKeys, ...resolved.sourceKeys]));
+        if (mergedKeys.length !== existing.sourceKeys.length) {
+          map.set(resolved.key, { ...existing, sourceKeys: mergedKeys });
+        }
+        return;
+      }
+      map.set(resolved.key, resolved);
     });
     return Array.from(map.values());
   }, [kpiKeysInRuns]);
@@ -850,17 +811,17 @@ export const ScenarioComparePage = () => {
   };
 
   const formatImpactLine = (item: MetricRow) => {
-    const digits = item.metric.digits ?? 2;
-    const pctText = item.deltaPct == null ? "" : ` (${formatDelta(item.deltaPct, 2)}%)`;
+    const precision = item.metric.precision ?? 2;
+    const pctText = item.deltaPct == null ? "" : ` (${formatPercentDelta(item.deltaPct, precision)})`;
     const rangeText =
       item.rangeScores && item.rangeScores.baseline != null && item.rangeScores.scenario != null
-        ? ` (расстояние: ${formatNumber(item.rangeScores.baseline, 2)} → ${formatNumber(item.rangeScores.scenario, 2)})`
+        ? ` (расстояние: ${formatNumber(item.rangeScores.baseline, precision)} → ${formatNumber(item.rangeScores.scenario, precision)})`
         : "";
-    return `${item.metric.label}: ${formatDelta(item.delta, digits)}${pctText}${rangeText}`;
+    return `${metricLabelWithUnit(item.metric)}: ${formatDelta(item.delta, precision)}${pctText}${rangeText}`;
   };
 
   const renderTopList = (items: MetricRow[]) => {
-    if (!items.length) return <div className="muted">—</div>;
+    if (!items.length) return <div className="muted">{MISSING_VALUE_TEXT}</div>;
     return (
       <ul>
         {items.map((item) => (
@@ -881,7 +842,7 @@ export const ScenarioComparePage = () => {
       <table className="table striped">
         <thead>
           <tr>
-            <th>Метрика</th>
+            <th>Метрика, ед.</th>
             <th>Базовый</th>
             <th>Сценарий</th>
             <th>Δ</th>
@@ -892,7 +853,7 @@ export const ScenarioComparePage = () => {
         <tbody>
           {rows.map(({ metric, goal, baseValue, scenarioValue, delta, deltaPct, verdict, verdictReason }) => {
             const className = deltaClass(delta, goal, verdict);
-            const digits = metric.digits ?? 2;
+            const precision = metric.precision ?? 2;
             const rowClass =
               verdict === "better" ? "kpi-row-better" : verdict === "worse" ? "kpi-row-worse" : "";
             const verdictClass =
@@ -909,15 +870,15 @@ export const ScenarioComparePage = () => {
 
             return (
               <tr key={metric.key} className={rowClass || undefined}>
-                <td>{metric.label}</td>
-                <td className="align-right">{formatNumber(baseValue, digits)}</td>
-                <td className="align-right">{formatNumber(scenarioValue, digits)}</td>
+                <td>{metricLabelWithUnit(metric)}</td>
+                <td className="align-right">{formatNumber(baseValue, precision)}</td>
+                <td className="align-right">{formatNumber(scenarioValue, precision)}</td>
                 <td className="align-right">
-                  <span className={`delta ${className}`}>{formatDelta(delta, 2)}</span>
+                  <span className={`delta ${className}`}>{formatDelta(delta, precision)}</span>
                 </td>
                 <td className="align-right">
                   <span className={`delta ${className}`}>
-                    {deltaPct == null ? "—" : `${formatDelta(deltaPct, 2)}%`}
+                    {formatPercentDelta(deltaPct, precision)}
                   </span>
                 </td>
                 <td className="align-left">
@@ -1106,7 +1067,7 @@ export const ScenarioComparePage = () => {
                             className="metric-card"
                             style={{ minHeight: "auto", gap: 8, justifyContent: "flex-start" }}
                           >
-                            <div className="stat-label">{metric.label}</div>
+                            <div className="stat-label">{metricLabelWithUnit(metric)}</div>
                             <select
                               className="input"
                               value={goal.type}
