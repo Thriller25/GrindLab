@@ -185,6 +185,34 @@ ul {
   background: #fafafa;
 }
 
+.table.striped tbody tr.kpi-row-better {
+  background: #ecfdf3;
+}
+
+.table.striped tbody tr.kpi-row-worse {
+  background: #fef2f2;
+}
+
+.verdict {
+  font-weight: 700;
+}
+
+.verdict-better {
+  color: #15803d;
+}
+
+.verdict-worse {
+  color: #b91c1c;
+}
+
+.verdict-same {
+  color: #4b5563;
+}
+
+.verdict-unknown {
+  color: #9ca3af;
+}
+
 .align-left {
   text-align: left;
 }

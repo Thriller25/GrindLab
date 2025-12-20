@@ -359,6 +359,27 @@ export interface CalcRunRead {
   result_json?: any;
 }
 
+export interface CalcRunListItem {
+  id: string;
+  flowsheet_version_id: string;
+  scenario_id?: string | null;
+  scenario_name?: string | null;
+  project_id?: number | null;
+  status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  comment?: string | null;
+  error_message?: string | null;
+  started_by_user_id?: string | null;
+  input_json?: any;
+  result_json?: any;
+}
+
+export interface CalcRunListResponse {
+  items: CalcRunListItem[];
+  total: number;
+}
+
 export async function fetchLatestCalcRunByScenario(
   scenarioId: string,
   status: string | null = "success",
@@ -373,6 +394,22 @@ export async function fetchCalcRunBaselineComparison(
   calcRunId: string | number,
 ): Promise<CalcRunBaselineComparison> {
   const resp = await api.get<CalcRunBaselineComparison>(`/api/calc-runs/${calcRunId}/baseline-comparison`);
+  return resp.data;
+}
+
+export async function fetchCalcRunsByFlowsheetVersion(
+  flowsheetVersionId: string,
+  options?: { limit?: number; offset?: number; status?: string | null; scenarioId?: string },
+): Promise<CalcRunListResponse> {
+  const { limit, offset, status, scenarioId } = options || {};
+  const resp = await api.get<CalcRunListResponse>(`/api/calc-runs/by-flowsheet-version/${flowsheetVersionId}`, {
+    params: {
+      limit,
+      offset,
+      status: status ?? undefined,
+      scenario_id: scenarioId,
+    },
+  });
   return resp.data;
 }
 
