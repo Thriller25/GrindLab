@@ -11,66 +11,182 @@ import {
 } from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
 
-type MetricDirection = "higher" | "lower";
+type GoalType = "higher_is_better" | "lower_is_better" | "target_range" | "unknown";
 type MetricVerdict = "better" | "worse" | "same" | "unknown";
 type VerdictFilter = "all" | "better" | "worse";
+
+type KpiGoal = {
+  type: GoalType;
+  min?: number | null;
+  max?: number | null;
+};
 
 type MetricConfig = {
   key: string;
   label: string;
-  direction: MetricDirection;
   digits?: number;
   sourceKeys: string[];
+  defaultGoal: KpiGoal;
+};
+
+type MetricVerdictResult = {
+  verdict: MetricVerdict;
+  reason?: string | null;
+  baselineRangeScore?: number | null;
+  scenarioRangeScore?: number | null;
 };
 
 const DELTA_EPSILON = 1e-6;
 const BASELINE_EPSILON = 1e-9;
 
+const KPI_GOAL_STORAGE_PREFIX = "grindlab.kpiGoals.v1.project.";
+
+const UNKNOWN_GOAL: KpiGoal = { type: "unknown" };
+
+const GOAL_TYPE_LABELS: Record<GoalType, string> = {
+  higher_is_better: "Больше — лучше",
+  lower_is_better: "Меньше — лучше",
+  target_range: "Целевой диапазон",
+  unknown: "Не задано",
+};
+
 const VERDICT_LABELS: Record<MetricVerdict, string> = {
   better: "Лучше",
   worse: "Хуже",
   same: "Без изменений",
-  unknown: "—",
+  unknown: "Неизвестно",
 };
 
 const METRICS: MetricConfig[] = [
   {
     key: "throughput_tph",
     label: "Производительность, т/ч",
-    direction: "higher",
+    defaultGoal: { type: "higher_is_better" },
     digits: 2,
     sourceKeys: ["throughput_tph"],
   },
   {
     key: "p80_mm",
     label: "P80 продукта, мм",
-    direction: "lower",
+    defaultGoal: { type: "lower_is_better" },
     digits: 2,
     sourceKeys: ["product_p80_mm", "p80_mm"],
   },
   {
     key: "specific_energy_kwhpt",
-    label: "Удельная энергия, кВт·ч/т",
-    direction: "lower",
+    label: "Удельная энергозатратность, кВт⋅ч/т",
+    defaultGoal: { type: "lower_is_better" },
     digits: 2,
     sourceKeys: ["specific_energy_kwh_per_t", "specific_energy_kwhpt"],
   },
   {
     key: "recirc_load_pct",
-    label: "Рециркуляционная нагрузка, %",
-    direction: "lower",
+    label: "Циркуляционная нагрузка, %",
+    defaultGoal: { type: "target_range" },
     digits: 2,
     sourceKeys: ["circulating_load_percent", "recirc_load_pct"],
   },
   {
     key: "mill_load_pct",
     label: "Загрузка мельницы, %",
-    direction: "higher",
+    defaultGoal: { type: "target_range" },
     digits: 2,
     sourceKeys: ["mill_utilization_percent", "mill_load_pct"],
-    // TODO: позже заменить на оценку по целевому диапазону.
+    // TODO: пересмотреть текст при наличии уточнений по метрикам нагрузки мельницы.
   },
 ];
+
+const DEFAULT_GOALS_BY_KEY = METRICS.reduce<Record<string, KpiGoal>>((acc, metric) => {
+  acc[metric.key] = metric.defaultGoal;
+  return acc;
+}, {});
+
+const SOURCE_KEY_TO_METRIC_KEY = METRICS.reduce<Record<string, string>>((acc, metric) => {
+  metric.sourceKeys.forEach((key) => {
+    if (!acc[key]) acc[key] = metric.key;
+  });
+  return acc;
+}, {});
+
+const isGoalType = (value?: string): value is GoalType =>
+  value === "higher_is_better" || value === "lower_is_better" || value === "target_range" || value === "unknown";
+
+const toNumberOrNull = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+const normalizeGoal = (goal?: KpiGoal): KpiGoal => {
+  if (!goal || !isGoalType(goal.type)) return { ...UNKNOWN_GOAL };
+  if (goal.type !== "target_range") return { type: goal.type };
+  return { type: goal.type, min: toNumberOrNull(goal.min), max: toNumberOrNull(goal.max) };
+};
+
+const goalEquals = (a: KpiGoal | undefined, b: KpiGoal) =>
+  a?.type === b.type && a?.min === b.min && a?.max === b.max;
+
+const defaultGoalForKey = (key: string) => normalizeGoal(DEFAULT_GOALS_BY_KEY[key] ?? UNKNOWN_GOAL);
+
+const ensureGoalsForMetrics = (goals: Record<string, KpiGoal>, metrics: MetricConfig[]) => {
+  let changed = false;
+  const next = { ...goals };
+  metrics.forEach((metric) => {
+    const desired = normalizeGoal(goals[metric.key] ?? metric.defaultGoal ?? UNKNOWN_GOAL);
+    if (!goalEquals(goals[metric.key], desired)) {
+      next[metric.key] = desired;
+      changed = true;
+    }
+  });
+  return changed ? next : goals;
+};
+
+const loadStoredGoals = (projectId: string): Record<string, KpiGoal> => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(`${KPI_GOAL_STORAGE_PREFIX}${projectId}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.entries(parsed).reduce<Record<string, KpiGoal>>((acc, [key, value]) => {
+      acc[key] = normalizeGoal(value as KpiGoal);
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+};
+
+const persistGoals = (projectId: string, goals: Record<string, KpiGoal>) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(`${KPI_GOAL_STORAGE_PREFIX}${projectId}`, JSON.stringify(goals));
+  } catch {
+    // ignore storage errors
+  }
+};
+
+const extractRange = (goal: KpiGoal) => {
+  if (goal.type !== "target_range") return null;
+  const min = toNumberOrNull(goal.min);
+  const max = toNumberOrNull(goal.max);
+  if (min == null || max == null) return null;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  if (min > max) return null;
+  return { min, max };
+};
+
+const describeGoal = (goal: KpiGoal) => {
+  if (goal.type === "target_range") {
+    const range = extractRange(goal);
+    if (range) return `${GOAL_TYPE_LABELS[goal.type]} (${range.min} — ${range.max})`;
+    return `${GOAL_TYPE_LABELS[goal.type]} (диапазон не задан)`;
+  }
+  return GOAL_TYPE_LABELS[goal.type] ?? GOAL_TYPE_LABELS.unknown;
+};
 
 type MissingState = { message: string; allowScenarioRun?: boolean; allowBaselineRun?: boolean };
 type SortMode = "default" | "absDelta";
@@ -110,18 +226,46 @@ const kpiValue = (run: GrindMvpRunDetail | null, keys: string[]): number | null 
   return null;
 };
 
-const deltaClass = (delta: number | null, direction: MetricDirection) => {
+const deltaClass = (delta: number | null, goal: KpiGoal, verdict: MetricVerdict) => {
   if (delta == null || Math.abs(delta) < DELTA_EPSILON) return "";
-  const isBetter = direction === "higher" ? delta > 0 : delta < 0;
-  return isBetter ? "delta-positive" : "delta-negative";
+  if (goal.type === "higher_is_better") return delta > 0 ? "delta-positive" : "delta-negative";
+  if (goal.type === "lower_is_better") return delta > 0 ? "delta-negative" : "delta-positive";
+  if (verdict === "better") return "delta-positive";
+  if (verdict === "worse") return "delta-negative";
+  return "";
 };
 
-const calcVerdict = (baseValue: number | null, scenarioValue: number | null, direction: MetricDirection): MetricVerdict => {
-  if (baseValue == null || scenarioValue == null) return "unknown";
+const rangeDistance = (value: number, range: { min: number; max: number }) => {
+  if (value < range.min) return range.min - value;
+  if (value > range.max) return value - range.max;
+  return 0;
+};
+
+const calcVerdict = (
+  baseValue: number | null,
+  scenarioValue: number | null,
+  goal: KpiGoal,
+): MetricVerdictResult => {
+  if (baseValue == null || scenarioValue == null) return { verdict: "unknown" };
+  if (goal.type === "unknown") return { verdict: "unknown" };
+  if (goal.type === "target_range") {
+    const range = extractRange(goal);
+    if (!range) return { verdict: "unknown", reason: "Диапазон не задан" };
+    const baselineScore = rangeDistance(baseValue, range);
+    const scenarioScore = rangeDistance(scenarioValue, range);
+    if (scenarioScore < baselineScore - DELTA_EPSILON) {
+      return { verdict: "better", baselineRangeScore: baselineScore, scenarioRangeScore: scenarioScore };
+    }
+    if (scenarioScore > baselineScore + DELTA_EPSILON) {
+      return { verdict: "worse", baselineRangeScore: baselineScore, scenarioRangeScore: scenarioScore };
+    }
+    return { verdict: "same", baselineRangeScore: baselineScore, scenarioRangeScore: scenarioScore };
+  }
+
   const delta = scenarioValue - baseValue;
-  if (Math.abs(delta) < DELTA_EPSILON) return "same";
-  const isBetter = direction === "higher" ? delta > 0 : delta < 0;
-  return isBetter ? "better" : "worse";
+  if (Math.abs(delta) < DELTA_EPSILON) return { verdict: "same" };
+  const isBetter = goal.type === "higher_is_better" ? delta > 0 : delta < 0;
+  return { verdict: isBetter ? "better" : "worse" };
 };
 
 const impactValue = (deltaPct: number | null, delta: number | null, verdict: MetricVerdict) => {
@@ -133,15 +277,26 @@ const impactValue = (deltaPct: number | null, delta: number | null, verdict: Met
 
 type MetricRow = {
   metric: MetricConfig;
+  goal: KpiGoal;
   baseValue: number | null;
   scenarioValue: number | null;
   delta: number | null;
   deltaPct: number | null;
   verdict: MetricVerdict;
+  verdictReason?: string | null;
+  rangeScores?: { baseline: number | null; scenario: number | null };
   index: number;
 };
 
-const impactOfRow = (row: MetricRow) => impactValue(row.deltaPct, row.delta, row.verdict);
+const impactOfRow = (row: MetricRow) => {
+  if (row.verdict === "same") return 0;
+  if (row.rangeScores) {
+    const baseScore = row.rangeScores.baseline ?? 0;
+    const scenarioScore = row.rangeScores.scenario ?? 0;
+    return Math.abs(baseScore - scenarioScore);
+  }
+  return impactValue(row.deltaPct, row.delta, row.verdict);
+};
 
 export const ScenarioComparePage = () => {
   const { projectId, scenarioId } = useParams<{ projectId: string; scenarioId: string }>();
@@ -166,6 +321,9 @@ export const ScenarioComparePage = () => {
   const [sortMode, setSortMode] = useState<SortMode>("default");
   const [showOnlyDifferent, setShowOnlyDifferent] = useState(false);
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
+  const [kpiGoals, setKpiGoals] = useState<Record<string, KpiGoal>>({});
+  const [goalsReady, setGoalsReady] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const flowsheetVersionNameById = useMemo(() => {
     if (!dashboard?.flowsheet_versions) return {};
@@ -375,6 +533,52 @@ export const ScenarioComparePage = () => {
     };
   }, [selectedBaselineRunId]);
 
+  const kpiKeysInRuns = useMemo(() => {
+    const keys = new Set<string>();
+    const collectKeys = (run: GrindMvpRunDetail | null) => {
+      const kpi = (run?.result?.kpi ?? {}) as Record<string, unknown>;
+      Object.keys(kpi).forEach((key) => keys.add(key));
+    };
+    collectKeys(scenarioRun);
+    collectKeys(baselineRun);
+    return Array.from(keys);
+  }, [baselineRun, scenarioRun]);
+
+  const allMetrics = useMemo<MetricConfig[]>(() => {
+    const map = new Map<string, MetricConfig>();
+    METRICS.forEach((metric) => map.set(metric.key, metric));
+    kpiKeysInRuns.forEach((key) => {
+      const knownMetricKey = SOURCE_KEY_TO_METRIC_KEY[key];
+      if (knownMetricKey && map.has(knownMetricKey)) return;
+      if (map.has(key)) return;
+      map.set(key, { key, label: key, defaultGoal: UNKNOWN_GOAL, digits: 2, sourceKeys: [key] });
+    });
+    return Array.from(map.values());
+  }, [kpiKeysInRuns]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setKpiGoals({});
+      setGoalsReady(false);
+      return;
+    }
+    setGoalsReady(false);
+    const stored = loadStoredGoals(projectId);
+    setKpiGoals(stored);
+    setSaveMessage(null);
+    setGoalsReady(true);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!goalsReady) return;
+    setKpiGoals((prev) => ensureGoalsForMetrics(prev, allMetrics));
+  }, [allMetrics, goalsReady]);
+
+  useEffect(() => {
+    if (!projectId || !goalsReady) return;
+    persistGoals(projectId, kpiGoals);
+  }, [goalsReady, kpiGoals, projectId]);
+
   const selectedVersionLabel = useMemo(() => {
     if (!selectedScenario) return "—";
     const id = String(selectedScenario.flowsheet_version_id);
@@ -420,7 +624,8 @@ export const ScenarioComparePage = () => {
   const comparisonMetrics = useMemo<MetricRow[]>(() => {
     if (!scenarioRun || !baselineRun) return [];
 
-    return METRICS.map((metric, index) => {
+    return allMetrics.map((metric, index) => {
+      const goal = normalizeGoal(kpiGoals[metric.key] ?? metric.defaultGoal ?? UNKNOWN_GOAL);
       const baseValue = kpiValue(baselineRun, metric.sourceKeys);
       const scenarioValue = kpiValue(scenarioRun, metric.sourceKeys);
       const delta = baseValue != null && scenarioValue != null ? scenarioValue - baseValue : null;
@@ -428,11 +633,29 @@ export const ScenarioComparePage = () => {
         baseValue != null && scenarioValue != null && Math.abs(baseValue) > BASELINE_EPSILON
           ? ((scenarioValue - baseValue) / baseValue) * 100
           : null;
-      const verdict = calcVerdict(baseValue, scenarioValue, metric.direction);
+      const verdictResult = calcVerdict(baseValue, scenarioValue, goal);
+      const rangeScores =
+        verdictResult.baselineRangeScore == null && verdictResult.scenarioRangeScore == null
+          ? undefined
+          : {
+              baseline: verdictResult.baselineRangeScore ?? null,
+              scenario: verdictResult.scenarioRangeScore ?? null,
+            };
 
-      return { metric, baseValue, scenarioValue, delta, deltaPct, verdict, index };
+      return {
+        metric,
+        goal,
+        baseValue,
+        scenarioValue,
+        delta,
+        deltaPct,
+        verdict: verdictResult.verdict,
+        verdictReason: verdictResult.reason,
+        rangeScores,
+        index,
+      };
     });
-  }, [baselineRun, scenarioRun]);
+  }, [allMetrics, baselineRun, kpiGoals, scenarioRun]);
 
   const sortedMetrics = useMemo(() => {
     const sorted = [...comparisonMetrics];
@@ -449,7 +672,8 @@ export const ScenarioComparePage = () => {
   const filteredMetrics = useMemo(
     () =>
       sortedMetrics.filter((item) => {
-        if (showOnlyDifferent && item.verdict === "same") return false;
+        const hasDelta = item.delta != null && Math.abs(item.delta) >= DELTA_EPSILON;
+        if (showOnlyDifferent && !hasDelta) return false;
         if (verdictFilter === "better") return item.verdict === "better";
         if (verdictFilter === "worse") return item.verdict === "worse";
         return true;
@@ -496,6 +720,60 @@ export const ScenarioComparePage = () => {
     }
   };
 
+  const setGoalForMetric = (metricKey: string, updater: (goal: KpiGoal) => KpiGoal) => {
+    setKpiGoals((prev) => {
+      const current = normalizeGoal(prev[metricKey] ?? defaultGoalForKey(metricKey));
+      const next = normalizeGoal(updater(current));
+      if (goalEquals(current, next)) return prev;
+      return { ...prev, [metricKey]: next };
+    });
+    setSaveMessage(null);
+  };
+
+  const handleGoalTypeChange = (metricKey: string, type: GoalType) => {
+    setGoalForMetric(metricKey, (current) => {
+      if (type === "target_range") {
+        return { type, min: current.min ?? null, max: current.max ?? null };
+      }
+      return { type };
+    });
+  };
+
+  const handleRangeChange = (metricKey: string, bound: "min" | "max", value: string) => {
+    setGoalForMetric(metricKey, (current) => {
+      const parsed = value.trim() === "" ? null : Number(value);
+      const numericValue = parsed != null && Number.isFinite(parsed) ? parsed : null;
+      const next: KpiGoal = {
+        type: "target_range",
+        min: current.min ?? null,
+        max: current.max ?? null,
+      };
+      if (bound === "min") {
+        next.min = numericValue;
+      } else {
+        next.max = numericValue;
+      }
+      return next;
+    });
+  };
+
+  const handleSaveGoals = () => {
+    if (!projectId) return;
+    const ensured = ensureGoalsForMetrics(kpiGoals, allMetrics);
+    setKpiGoals(ensured);
+    persistGoals(projectId, ensured);
+    setSaveMessage("Настройки сохранены");
+  };
+
+  const handleResetGoals = () => {
+    const defaults = allMetrics.reduce<Record<string, KpiGoal>>((acc, metric) => {
+      acc[metric.key] = defaultGoalForKey(metric.key);
+      return acc;
+    }, {});
+    setKpiGoals(defaults);
+    setSaveMessage("Настройки сброшены к умолчаниям");
+  };
+
   const renderMissing = (state: MissingState) => {
     const allowScenarioRun = state.allowScenarioRun ?? true;
     const allowBaselineRun = state.allowBaselineRun ?? false;
@@ -529,7 +807,11 @@ export const ScenarioComparePage = () => {
   const formatImpactLine = (item: MetricRow) => {
     const digits = item.metric.digits ?? 2;
     const pctText = item.deltaPct == null ? "" : ` (${formatDelta(item.deltaPct, 2)}%)`;
-    return `${item.metric.label}: ${formatDelta(item.delta, digits)}${pctText}`;
+    const rangeText =
+      item.rangeScores && item.rangeScores.baseline != null && item.rangeScores.scenario != null
+        ? ` (расстояние: ${formatNumber(item.rangeScores.baseline, 2)} → ${formatNumber(item.rangeScores.scenario, 2)})`
+        : "";
+    return `${item.metric.label}: ${formatDelta(item.delta, digits)}${pctText}${rangeText}`;
   };
 
   const renderTopList = (items: MetricRow[]) => {
@@ -542,6 +824,8 @@ export const ScenarioComparePage = () => {
       </ul>
     );
   };
+
+  const goalOptions: GoalType[] = ["higher_is_better", "lower_is_better", "target_range", "unknown"];
 
   const renderComparisonTable = (rows: MetricRow[]) => {
     if (!rows.length) {
@@ -561,8 +845,8 @@ export const ScenarioComparePage = () => {
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ metric, baseValue, scenarioValue, delta, deltaPct, verdict }) => {
-            const className = deltaClass(delta, metric.direction);
+          {rows.map(({ metric, goal, baseValue, scenarioValue, delta, deltaPct, verdict, verdictReason }) => {
+            const className = deltaClass(delta, goal, verdict);
             const digits = metric.digits ?? 2;
             const rowClass =
               verdict === "better" ? "kpi-row-better" : verdict === "worse" ? "kpi-row-worse" : "";
@@ -574,6 +858,9 @@ export const ScenarioComparePage = () => {
                 : verdict === "same"
                 ? "verdict verdict-same"
                 : "verdict verdict-unknown";
+            const verdictTitleParts = [describeGoal(goal)];
+            if (verdictReason) verdictTitleParts.push(verdictReason);
+            const verdictTitle = verdictTitleParts.join(". ");
 
             return (
               <tr key={metric.key} className={rowClass || undefined}>
@@ -589,7 +876,9 @@ export const ScenarioComparePage = () => {
                   </span>
                 </td>
                 <td className="align-left">
-                  <span className={verdictClass}>{VERDICT_LABELS[verdict]}</span>
+                  <span className={verdictClass} title={verdictTitle}>
+                    {VERDICT_LABELS[verdict]}
+                  </span>
                 </td>
               </tr>
             );
@@ -731,6 +1020,80 @@ export const ScenarioComparePage = () => {
                       Δ и %Δ считаются относительно базового сценария. Оценка учитывает направление, в котором KPI
                       считается лучше.
                     </p>
+                  </div>
+                  <div className="card" style={{ marginBottom: 12 }}>
+                    <div className="section-heading" style={{ marginBottom: 8 }}>
+                      <h3>Настройки целей KPI</h3>
+                      <p className="section-subtitle">
+                        Настройки сохраняются для проекта в браузере. Для «Целевой диапазон» оценка строится по расстоянию до диапазона.
+                      </p>
+                    </div>
+                    <div className="filters-bar" style={{ alignItems: "center", gap: 8 }}>
+                      <div className="actions" style={{ justifyContent: "flex-start" }}>
+                        <button className="btn" type="button" onClick={handleSaveGoals}>
+                          Сохранить
+                        </button>
+                        <button className="btn secondary" type="button" onClick={handleResetGoals}>
+                          Сбросить к умолчаниям
+                        </button>
+                      </div>
+                      <div className="muted">Изменения применяются сразу.</div>
+                      {saveMessage && <div className="muted">{saveMessage}</div>}
+                    </div>
+                    <div className="kpi-grid">
+                      {allMetrics.map((metric) => {
+                        const goal = normalizeGoal(kpiGoals[metric.key] ?? metric.defaultGoal ?? UNKNOWN_GOAL);
+                        const range = extractRange(goal);
+                        const showRangeWarning = goal.type === "target_range" && !range;
+                        return (
+                          <div
+                            key={metric.key}
+                            className="metric-card"
+                            style={{ minHeight: "auto", gap: 8, justifyContent: "flex-start" }}
+                          >
+                            <div className="stat-label">{metric.label}</div>
+                            <select
+                              className="input"
+                              value={goal.type}
+                              onChange={(e) => handleGoalTypeChange(metric.key, e.target.value as GoalType)}
+                            >
+                              {goalOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {GOAL_TYPE_LABELS[option]}
+                                </option>
+                              ))}
+                            </select>
+                            {goal.type === "target_range" && (
+                              <div className="grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                                <label className="filter-control">
+                                  Мин
+                                  <input
+                                    className="input"
+                                    type="number"
+                                    step="any"
+                                    value={goal.min ?? ""}
+                                    onChange={(e) => handleRangeChange(metric.key, "min", e.target.value)}
+                                  />
+                                </label>
+                                <label className="filter-control">
+                                  Макс
+                                  <input
+                                    className="input"
+                                    type="number"
+                                    step="any"
+                                    value={goal.max ?? ""}
+                                    onChange={(e) => handleRangeChange(metric.key, "max", e.target.value)}
+                                  />
+                                </label>
+                              </div>
+                            )}
+                            <div className="muted">
+                              {showRangeWarning ? "Диапазон не задан" : describeGoal(goal)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div className="meta-row" style={{ marginBottom: 6 }}>
                     <span className="meta-item">Улучшилось: {summaryCounts.better}</span>
