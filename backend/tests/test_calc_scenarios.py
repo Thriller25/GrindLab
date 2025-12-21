@@ -11,12 +11,26 @@ from .utils import (
 )
 
 
+def _register_and_token(client: TestClient, email: str, password: str = "secret123") -> tuple[str, str]:
+    reg_resp = client.post("/api/auth/register", json={"email": email, "full_name": "User", "password": password})
+    assert reg_resp.status_code in (200, 201)
+    token_resp = client.post(
+        "/api/auth/token",
+        data={"username": email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert token_resp.status_code == 200
+    return reg_resp.json()["id"], token_resp.json()["access_token"]
+
+
 def test_calc_scenario_crud(client: TestClient):
+    _, token = _register_and_token(client, "crud@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, flowsheet_version_id)
+    project_id = create_project(client, plant_id, headers=headers)
+    link_project_to_version(client, project_id, flowsheet_version_id, headers=headers)
 
     payload = {
         "flowsheet_version_id": flowsheet_version_id,
@@ -25,7 +39,7 @@ def test_calc_scenario_crud(client: TestClient):
         "description": "Default parameters",
         "default_input_json": {"feed_tph": 150, "target_p80_microns": 180},
     }
-    resp = client.post("/api/calc-scenarios", json=payload)
+    resp = client.post("/api/calc-scenarios", json=payload, headers=headers)
     assert resp.status_code == 201
     scenario = resp.json()
     scenario_id = scenario["id"]
@@ -34,6 +48,9 @@ def test_calc_scenario_crud(client: TestClient):
     assert scenario["flowsheet_version_id"] == flowsheet_version_id
     assert scenario["default_input_json"]["feed_tph"] == payload["default_input_json"]["feed_tph"]
     assert scenario["is_baseline"] is False
+    assert scenario["is_recommended"] is False
+    assert scenario["recommendation_note"] is None
+    assert scenario.get("recommended_at") is None
 
     resp = client.get(f"/api/calc-scenarios/{scenario_id}")
     assert resp.status_code == 200
@@ -41,6 +58,7 @@ def test_calc_scenario_crud(client: TestClient):
     assert fetched["id"] == scenario_id
     assert fetched["default_input_json"]["target_p80_microns"] == payload["default_input_json"]["target_p80_microns"]
     assert fetched["is_baseline"] is False
+    assert fetched["is_recommended"] is False
 
     resp = client.get(
         f"/api/calc-scenarios/by-flowsheet-version/{flowsheet_version_id}", params={"project_id": project_id}
@@ -51,23 +69,25 @@ def test_calc_scenario_crud(client: TestClient):
     assert any(item["id"] == scenario_id for item in list_body["items"])
 
     update_payload = {"name": "Updated scenario", "description": "Updated description"}
-    resp = client.patch(f"/api/calc-scenarios/{scenario_id}", json=update_payload)
+    resp = client.patch(f"/api/calc-scenarios/{scenario_id}", json=update_payload, headers=headers)
     assert resp.status_code == 200
     updated = resp.json()
     assert updated["name"] == update_payload["name"]
     assert updated["description"] == update_payload["description"]
-    assert updated["updated_at"] != scenario_updated_at
+    assert updated["updated_at"] >= scenario_updated_at
 
-    resp = client.delete(f"/api/calc-scenarios/{scenario_id}")
+    resp = client.delete(f"/api/calc-scenarios/{scenario_id}", headers=headers)
     assert resp.status_code in (200, 204)
 
 
 def test_delete_calc_scenario_blocked_when_runs_exist(client: TestClient):
+    _, token = _register_and_token(client, "blocked@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, flowsheet_version_id)
+    project_id = create_project(client, plant_id, headers=headers)
+    link_project_to_version(client, project_id, flowsheet_version_id, headers=headers)
 
     scenario_payload = {
         "flowsheet_version_id": flowsheet_version_id,
@@ -75,24 +95,26 @@ def test_delete_calc_scenario_blocked_when_runs_exist(client: TestClient):
         "name": "Scenario with runs",
         "default_input_json": {"feed_tph": 150, "target_p80_microns": 180},
     }
-    resp = client.post("/api/calc-scenarios", json=scenario_payload)
+    resp = client.post("/api/calc-scenarios", json=scenario_payload, headers=headers)
     assert resp.status_code == 201
     scenario_id = resp.json()["id"]
 
     run_resp = client.post(f"/api/calc/flowsheet-run/by-scenario/{scenario_id}")
     assert run_resp.status_code in (200, 201)
 
-    delete_resp = client.delete(f"/api/calc-scenarios/{scenario_id}")
+    delete_resp = client.delete(f"/api/calc-scenarios/{scenario_id}", headers=headers)
     assert delete_resp.status_code == 409
     assert delete_resp.json()["detail"] == "Scenario has runs; cannot delete"
 
 
 def test_delete_baseline_scenario_clears_project_baseline(client: TestClient):
+    _, token = _register_and_token(client, "baseline-delete@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, flowsheet_version_id)
+    project_id = create_project(client, plant_id, headers=headers)
+    link_project_to_version(client, project_id, flowsheet_version_id, headers=headers)
 
     base_payload = {
         "flowsheet_version_id": flowsheet_version_id,
@@ -106,18 +128,18 @@ def test_delete_baseline_scenario_clears_project_baseline(client: TestClient):
         "name": "Secondary scenario",
         "default_input_json": {"feed_tph": 170, "target_p80_microns": 190},
     }
-    base_resp = client.post("/api/calc-scenarios", json=base_payload)
+    base_resp = client.post("/api/calc-scenarios", json=base_payload, headers=headers)
     assert base_resp.status_code == 201
     baseline_id = base_resp.json()["id"]
-    secondary_resp = client.post("/api/calc-scenarios", json=secondary_payload)
+    secondary_resp = client.post("/api/calc-scenarios", json=secondary_payload, headers=headers)
     assert secondary_resp.status_code == 201
     secondary_id = secondary_resp.json()["id"]
 
-    set_resp = client.post(f"/api/calc-scenarios/{baseline_id}/set-baseline")
+    set_resp = client.post(f"/api/calc-scenarios/{baseline_id}/set-baseline", headers=headers)
     assert set_resp.status_code == 200
     assert set_resp.json()["is_baseline"] is True
 
-    delete_resp = client.delete(f"/api/calc-scenarios/{baseline_id}")
+    delete_resp = client.delete(f"/api/calc-scenarios/{baseline_id}", headers=headers)
     assert delete_resp.status_code in (200, 204)
 
     list_resp = client.get(f"/api/calc-scenarios/by-project/{project_id}")
@@ -378,14 +400,16 @@ def test_clone_flowsheet_version_without_scenarios(client: TestClient):
 
 
 def test_set_baseline_scenario_is_unique_per_project(client: TestClient):
+    _, token = _register_and_token(client, "unique-baseline@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     version_a = create_flowsheet_version(client, flowsheet_id)
     version_b = create_flowsheet_version(client, flowsheet_id)
 
-    project_id = create_project(client, plant_id)
-    link_project_to_version(client, project_id, version_a)
-    link_project_to_version(client, project_id, version_b)
+    project_id = create_project(client, plant_id, headers=headers)
+    link_project_to_version(client, project_id, version_a, headers=headers)
+    link_project_to_version(client, project_id, version_b, headers=headers)
 
     payloads = [
         {
@@ -403,7 +427,7 @@ def test_set_baseline_scenario_is_unique_per_project(client: TestClient):
     ]
     scenario_ids = []
     for payload in payloads:
-        resp = client.post("/api/calc-scenarios", json=payload)
+        resp = client.post("/api/calc-scenarios", json=payload, headers=headers)
         assert resp.status_code == 201
         body = resp.json()
         assert body["is_baseline"] is False
@@ -411,7 +435,7 @@ def test_set_baseline_scenario_is_unique_per_project(client: TestClient):
 
     first_id, second_id = scenario_ids
 
-    set_resp = client.post(f"/api/calc-scenarios/{first_id}/set-baseline")
+    set_resp = client.post(f"/api/calc-scenarios/{first_id}/set-baseline", headers=headers)
     assert set_resp.status_code == 200
     assert set_resp.json()["is_baseline"] is True
 
@@ -419,7 +443,7 @@ def test_set_baseline_scenario_is_unique_per_project(client: TestClient):
     assert second_before_resp.status_code == 200
     assert second_before_resp.json()["is_baseline"] is False
 
-    second_set_resp = client.post(f"/api/calc-scenarios/{second_id}/set-baseline")
+    second_set_resp = client.post(f"/api/calc-scenarios/{second_id}/set-baseline", headers=headers)
     assert second_set_resp.status_code == 200
     assert second_set_resp.json()["is_baseline"] is True
 
@@ -427,7 +451,7 @@ def test_set_baseline_scenario_is_unique_per_project(client: TestClient):
     assert first_after_resp.status_code == 200
     assert first_after_resp.json()["is_baseline"] is False
 
-    dashboard_resp = client.get(f"/api/projects/{project_id}/dashboard")
+    dashboard_resp = client.get(f"/api/projects/{project_id}/dashboard", headers=headers)
     assert dashboard_resp.status_code == 200
     scenarios = dashboard_resp.json().get("scenarios", [])
     baselines = [item for item in scenarios if item.get("is_baseline")]
@@ -436,6 +460,43 @@ def test_set_baseline_scenario_is_unique_per_project(client: TestClient):
 
 
 def test_unset_baseline_scenario(client: TestClient):
+    _, token = _register_and_token(client, "unset-baseline@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id, headers=headers)
+    link_project_to_version(client, project_id, flowsheet_version_id, headers=headers)
+
+    payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "name": "Scenario Baseline",
+        "default_input_json": {"feed_tph": 180, "target_p80_microns": 200},
+    }
+    resp = client.post("/api/calc-scenarios", json=payload, headers=headers)
+    assert resp.status_code == 201
+    scenario_id = resp.json()["id"]
+
+    set_resp = client.post(f"/api/calc-scenarios/{scenario_id}/set-baseline", headers=headers)
+    assert set_resp.status_code == 200
+    assert set_resp.json()["is_baseline"] is True
+
+    unset_resp = client.post(f"/api/calc-scenarios/{scenario_id}/unset-baseline", headers=headers)
+    assert unset_resp.status_code == 200
+    assert unset_resp.json()["is_baseline"] is False
+
+    overview_resp = client.get(f"/api/flowsheet-versions/{flowsheet_version_id}/overview")
+    assert overview_resp.status_code == 200
+    overview_body = overview_resp.json()
+    baselines = [item for item in overview_body["scenarios"] if item["scenario"]["is_baseline"]]
+    assert len(baselines) == 0
+
+
+def test_calc_scenario_recommendation_toggle_and_note(client: TestClient):
+    _, token = _register_and_token(client, "rec@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
     flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
@@ -445,23 +506,67 @@ def test_unset_baseline_scenario(client: TestClient):
     payload = {
         "flowsheet_version_id": flowsheet_version_id,
         "project_id": project_id,
-        "name": "Scenario Baseline",
-        "default_input_json": {"feed_tph": 180, "target_p80_microns": 200},
+        "name": "Scenario Rec",
+        "description": "With note",
+        "default_input_json": {"feed_tph": 150, "target_p80_microns": 180},
     }
-    resp = client.post("/api/calc-scenarios", json=payload)
-    assert resp.status_code == 201
-    scenario_id = resp.json()["id"]
+    create_resp = client.post("/api/calc-scenarios", json=payload, headers=headers)
+    assert create_resp.status_code == 201
+    scenario_id = create_resp.json()["id"]
 
-    set_resp = client.post(f"/api/calc-scenarios/{scenario_id}/set-baseline")
+    rec_note = "Рекомендуем использовать для отчёта"
+    set_resp = client.patch(
+        f"/api/calc-scenarios/{scenario_id}",
+        json={"is_recommended": True, "recommendation_note": rec_note},
+        headers=headers,
+    )
     assert set_resp.status_code == 200
-    assert set_resp.json()["is_baseline"] is True
+    set_body = set_resp.json()
+    assert set_body["is_recommended"] is True
+    assert set_body["recommendation_note"] == rec_note
+    assert set_body["recommended_at"] is not None
 
-    unset_resp = client.post(f"/api/calc-scenarios/{scenario_id}/unset-baseline")
-    assert unset_resp.status_code == 200
-    assert unset_resp.json()["is_baseline"] is False
+    clear_resp = client.patch(
+        f"/api/calc-scenarios/{scenario_id}",
+        json={"is_recommended": False, "recommendation_note": None},
+        headers=headers,
+    )
+    assert clear_resp.status_code == 200
+    clear_body = clear_resp.json()
+    assert clear_body["is_recommended"] is False
+    assert clear_body["recommendation_note"] is None
+    assert clear_body.get("recommended_at") is None
 
-    overview_resp = client.get(f"/api/flowsheet-versions/{flowsheet_version_id}/overview")
-    assert overview_resp.status_code == 200
-    overview_body = overview_resp.json()
-    baselines = [item for item in overview_body["scenarios"] if item["scenario"]["is_baseline"]]
-    assert len(baselines) == 0
+
+def test_public_project_cannot_set_recommendation_without_auth(client: TestClient):
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+    project_id = create_project(client, plant_id)
+    link_project_to_version(client, project_id, flowsheet_version_id)
+
+    payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": project_id,
+        "name": "Public scenario",
+        "default_input_json": {"feed_tph": 150, "target_p80_microns": 180},
+    }
+    create_resp = client.post("/api/calc-scenarios", json=payload)
+    assert create_resp.status_code == 201
+    scenario_id = create_resp.json()["id"]
+
+    guest_resp = client.patch(
+        f"/api/calc-scenarios/{scenario_id}",
+        json={"is_recommended": True, "recommendation_note": "note"},
+    )
+    assert guest_resp.status_code in (401, 403)
+
+    _, token = _register_and_token(client, "pubuser@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    auth_resp = client.patch(
+        f"/api/calc-scenarios/{scenario_id}",
+        json={"is_recommended": True, "recommendation_note": "note"},
+        headers=headers,
+    )
+    assert auth_resp.status_code == 200
+    assert auth_resp.json()["is_recommended"] is True

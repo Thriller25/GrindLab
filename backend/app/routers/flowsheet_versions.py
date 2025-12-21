@@ -127,6 +127,9 @@ def clone_flowsheet_version(
                 description=scenario.description,
                 default_input_json=scenario.default_input_json,
                 is_baseline=scenario.is_baseline,
+                is_recommended=scenario.is_recommended,
+                recommendation_note=scenario.recommendation_note,
+                recommended_at=scenario.recommended_at,
             )
             if scenario.is_baseline:
                 (

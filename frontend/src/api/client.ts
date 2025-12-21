@@ -227,6 +227,9 @@ export interface CalcScenario {
   flowsheet_version_id: string;
   project_id: number;
   is_baseline: boolean;
+   is_recommended: boolean;
+   recommendation_note?: string | null;
+   recommended_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -503,6 +506,8 @@ export async function createCalcScenario(payload: {
   description?: string;
   default_input_json: { feed_tph: number; target_p80_microns: number; ore_hardness_ab?: number | null; ore_hardness_ta?: number | null; water_fraction?: number | null };
   is_baseline?: boolean;
+  is_recommended?: boolean;
+  recommendation_note?: string | null;
 }): Promise<CalcScenario> {
   const resp = await api.post<CalcScenario>("/api/calc-scenarios", payload);
   return resp.data;
@@ -513,12 +518,24 @@ export async function setCalcScenarioBaseline(scenarioId: string): Promise<CalcS
   return resp.data;
 }
 
-export async function updateCalcScenario(
-  scenarioId: string,
-  payload: { name?: string; description?: string | null },
-): Promise<CalcScenario> {
+export type UpdateScenarioPayload = {
+  name?: string;
+  description?: string | null;
+  is_baseline?: boolean;
+  is_recommended?: boolean;
+  recommendation_note?: string | null;
+};
+
+export async function updateScenario(scenarioId: string, payload: UpdateScenarioPayload): Promise<CalcScenario> {
   const resp = await api.patch<CalcScenario>(`/api/calc-scenarios/${scenarioId}`, payload);
   return resp.data;
+}
+
+export async function updateCalcScenario(
+  scenarioId: string,
+  payload: UpdateScenarioPayload,
+): Promise<CalcScenario> {
+  return updateScenario(scenarioId, payload);
 }
 
 export async function deleteCalcScenario(scenarioId: string): Promise<void> {

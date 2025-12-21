@@ -7,6 +7,7 @@ import {
   fetchGrindMvpRun,
   fetchProjectDashboard,
   GrindMvpRunDetail,
+  updateScenario,
   ProjectDashboardResponse,
 } from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
@@ -290,6 +291,13 @@ export const ScenarioComparePage = () => {
   const [kpiGoals, setKpiGoals] = useState<Record<string, KpiGoal>>({});
   const [goalsReady, setGoalsReady] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [recommendModal, setRecommendModal] = useState<{
+    is_recommended: boolean;
+    recommendation_note: string;
+  } | null>(null);
+  const [recommendationSaving, setRecommendationSaving] = useState(false);
+  const [recommendationMessage, setRecommendationMessage] = useState<string | null>(null);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
 
   const flowsheetVersionNameById = useMemo(() => {
     if (!dashboard?.flowsheet_versions) return {};
@@ -320,6 +328,9 @@ export const ScenarioComparePage = () => {
     setError(null);
     setMissingState(null);
     setRunsError(null);
+    setRecommendationMessage(null);
+    setRecommendationError(null);
+    setRecommendModal(null);
     fetchProjectDashboard(projectId)
       .then((data) => {
         setDashboard(data);
@@ -709,6 +720,55 @@ export const ScenarioComparePage = () => {
     [comparisonMetrics],
   );
 
+  const applyScenarioUpdate = (updated: CalcScenario) => {
+    setSelectedScenario((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    setBaselineScenario((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    setDashboard((prev) =>
+      prev
+        ? { ...prev, scenarios: prev.scenarios.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)) }
+        : prev,
+    );
+  };
+
+  const openRecommendationModal = (nextValue?: boolean) => {
+    if (!selectedScenario) return;
+    setRecommendationError(null);
+    setRecommendationMessage(null);
+    setRecommendModal({
+      is_recommended: nextValue ?? selectedScenario.is_recommended,
+      recommendation_note: selectedScenario.recommendation_note || "",
+    });
+  };
+
+  const handleSaveRecommendation = async () => {
+    if (!selectedScenario || !recommendModal) return;
+    setRecommendationSaving(true);
+    setRecommendationError(null);
+    setRecommendationMessage(null);
+    const trimmedNote = recommendModal.recommendation_note.trim();
+    const noteToSave = recommendModal.is_recommended && trimmedNote ? trimmedNote : null;
+    try {
+      const updated = await updateScenario(selectedScenario.id, {
+        is_recommended: recommendModal.is_recommended,
+        recommendation_note: noteToSave,
+      });
+      applyScenarioUpdate(updated);
+      setRecommendationMessage(
+        recommendModal.is_recommended ? "Сценарий отмечен как рекомендованный." : "Рекомендация снята.",
+      );
+      setRecommendModal(null);
+    } catch (err) {
+      const detail = (err as any)?.response?.data?.detail;
+      setRecommendationError(
+        typeof detail === "string"
+          ? detail
+          : "Не удалось обновить рекомендацию. Авторизуйтесь и попробуйте снова.",
+      );
+    } finally {
+      setRecommendationSaving(false);
+    }
+  };
+
   const handleRunScenario = (id: string) => {
     if (!projectId) return;
     navigate(`/calc-run?projectId=${projectId}&scenarioId=${id}`);
@@ -925,6 +985,19 @@ export const ScenarioComparePage = () => {
                 </>
               )}
             </div>
+            <div className="meta-row">
+              <span className="meta-item">
+                Рекомендация: {selectedScenario?.is_recommended ? "Да" : "—"}
+              </span>
+              {baselineScenario && (
+                <>
+                  <span className="meta-sep">•</span>
+                  <span className="meta-item">
+                    Базовый: {baselineScenario.is_recommended ? "Да" : "—"}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
           <div className="actions">
             <button className="btn secondary" type="button" onClick={handleBackToProject}>
@@ -940,6 +1013,8 @@ export const ScenarioComparePage = () => {
         {!loading && !error && selectedScenario && (
           <>
             {runsError && <div className="general-error">{runsError}</div>}
+            {recommendationError && <div className="alert error">{recommendationError}</div>}
+            {recommendationMessage && <div className="alert success">{recommendationMessage}</div>}
 
             <section className="section">
               <div className="section-heading">
@@ -947,6 +1022,28 @@ export const ScenarioComparePage = () => {
                 <p className="section-subtitle">
                   Используем последние успешные запуски сценариев для расчёта дельт по KPI.
                 </p>
+              </div>
+              <div className="actions" style={{ justifyContent: "flex-start", gap: 10, marginBottom: 8 }}>
+                {selectedScenario && (
+                  <button
+                    className="btn secondary"
+                    type="button"
+                    onClick={() => openRecommendationModal(selectedScenario.is_recommended)}
+                    disabled={recommendationSaving}
+                  >
+                    Комментарий
+                  </button>
+                )}
+                {selectedScenario && (
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => openRecommendationModal(!selectedScenario.is_recommended)}
+                    disabled={recommendationSaving}
+                  >
+                    {selectedScenario.is_recommended ? "Снять рекомендацию" : "Рекомендовать сценарий"}
+                  </button>
+                )}
               </div>
 
               <div className="grid" style={{ gap: 12, marginBottom: 12 }}>
@@ -996,6 +1093,10 @@ export const ScenarioComparePage = () => {
                   <div className="stat-value">{selectedScenario.name}</div>
                   <div className="muted">Версия схемы: {selectedVersionLabel}</div>
                   <div className="muted">
+                    Рекомендация: {selectedScenario.is_recommended ? "Да" : "—"}
+                    {selectedScenario.recommendation_note ? ` • ${selectedScenario.recommendation_note}` : ""}
+                  </div>
+                  <div className="muted">
                     Запуск для сравнения:{" "}
                     {scenarioRunOption ? (
                       <span title={`Расчёт №${scenarioRunOption.id}`}>{formatRunLabel(scenarioRunOption)}</span>
@@ -1008,6 +1109,10 @@ export const ScenarioComparePage = () => {
                   <div className="stat-label">Базовый сценарий</div>
                   <div className="stat-value">{baselineScenario?.name ?? "—"}</div>
                   <div className="muted">Версия схемы: {baselineVersionLabel}</div>
+                  <div className="muted">
+                    Рекомендация: {baselineScenario?.is_recommended ? "Да" : "—"}
+                    {baselineScenario?.recommendation_note ? ` • ${baselineScenario.recommendation_note}` : ""}
+                  </div>
                   <div className="muted">
                     Запуск для сравнения:{" "}
                     {baselineRunOption ? (
@@ -1180,6 +1285,48 @@ export const ScenarioComparePage = () => {
           </>
         )}
       </div>
+      {recommendModal && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Рекомендация для сценария</h3>
+            <p className="section-subtitle">{selectedScenario?.name}</p>
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={recommendModal.is_recommended}
+                onChange={(e) =>
+                  setRecommendModal({
+                    ...recommendModal,
+                    is_recommended: e.target.checked,
+                  })
+                }
+              />
+              <span>Отметить как рекомендованный</span>
+            </label>
+            <label>
+              Комментарий (опционально)
+              <textarea
+                value={recommendModal.recommendation_note}
+                onChange={(e) =>
+                  setRecommendModal({
+                    ...recommendModal,
+                    recommendation_note: e.target.value,
+                  })
+                }
+                placeholder="Короткое пояснение для команды"
+              />
+            </label>
+            <div className="actions modal-actions">
+              <button className="btn secondary" type="button" onClick={() => setRecommendModal(null)} disabled={recommendationSaving}>
+                Отмена
+              </button>
+              <button className="btn" type="button" onClick={handleSaveRecommendation} disabled={recommendationSaving}>
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

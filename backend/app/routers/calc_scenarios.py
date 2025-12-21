@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -48,6 +49,12 @@ def _check_project_read_access(db: Session, project: models.Project, user: model
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
 
+def _check_project_write_access(db: Session, project: models.Project, user: models.User | None) -> None:
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    _check_project_read_access(db, project, user)
+
+
 def _ensure_version_linked_to_project(db: Session, project_id: int, flowsheet_version_id: uuid.UUID) -> None:
     link_exists = (
         db.query(models.ProjectFlowsheetVersion)
@@ -92,6 +99,9 @@ def create_calc_scenario(payload: CalcScenarioCreate, db: Session = Depends(get_
         description=payload.description,
         default_input_json=validated_input.model_dump(),
         is_baseline=payload.is_baseline,
+        is_recommended=payload.is_recommended,
+        recommendation_note=payload.recommendation_note,
+        recommended_at=func.now() if payload.is_recommended else None,
     )
     db.add(scenario)
     if payload.is_baseline:
@@ -164,7 +174,7 @@ def update_calc_scenario(
 ) -> CalcScenarioRead:
     scenario = get_calc_scenario_or_404(db, scenario_id)
     project = _get_project_or_404(db, scenario.project_id)
-    _check_project_read_access(db, project, current_user)
+    _check_project_write_access(db, project, current_user)
 
     update_data = payload.model_dump(exclude_unset=True)
     if "default_input_json" in update_data:
@@ -176,9 +186,24 @@ def update_calc_scenario(
         update_data.pop("default_input_json")
 
     baseline_value = update_data.pop("is_baseline", None)
+    is_recommended_value = update_data.pop("is_recommended", None)
+    recommendation_note_marker = object()
+    recommendation_note_value = update_data.pop("recommendation_note", recommendation_note_marker)
 
     for field, value in update_data.items():
         setattr(scenario, field, value)
+
+    if recommendation_note_value is not recommendation_note_marker:
+        scenario.recommendation_note = recommendation_note_value
+
+    if is_recommended_value is not None:
+        was_recommended = scenario.is_recommended
+        scenario.is_recommended = is_recommended_value
+        if is_recommended_value:
+            if not was_recommended or scenario.recommended_at is None:
+                scenario.recommended_at = datetime.now(timezone.utc)
+        else:
+            scenario.recommended_at = None
 
     if baseline_value is not None:
         _apply_baseline(db, scenario, baseline_value)
@@ -226,7 +251,7 @@ def delete_calc_scenario(
 ):
     scenario = get_calc_scenario_or_404(db, scenario_id)
     project = _get_project_or_404(db, scenario.project_id)
-    _check_project_read_access(db, project, current_user)
+    _check_project_write_access(db, project, current_user)
 
     has_runs = (
         db.query(models.CalcRun.id).filter(models.CalcRun.scenario_id == scenario.id).limit(1).first() is not None

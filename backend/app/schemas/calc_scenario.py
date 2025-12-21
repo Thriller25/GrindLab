@@ -12,6 +12,8 @@ class CalcScenarioBase(BaseModel):
     description: Optional[str] = None
     default_input_json: CalcInput
     is_baseline: bool = False
+    is_recommended: bool = False
+    recommendation_note: Optional[str] = None
 
 
 class CalcScenarioCreate(CalcScenarioBase):
@@ -24,12 +26,15 @@ class CalcScenarioUpdate(BaseModel):
     description: Optional[str] = None
     default_input_json: Optional[CalcInput] = None
     is_baseline: Optional[bool] = None
+    is_recommended: Optional[bool] = None
+    recommendation_note: Optional[str] = None
 
 
 class CalcScenarioRead(CalcScenarioBase):
     id: UUID
     flowsheet_version_id: UUID
     project_id: int
+    recommended_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -42,6 +47,9 @@ class CalcScenarioListItem(BaseModel):
     flowsheet_version_id: UUID
     project_id: int
     is_baseline: bool = False
+    is_recommended: bool = False
+    recommendation_note: Optional[str] = None
+    recommended_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

@@ -7,7 +7,7 @@ import {
   fetchProjectDashboard,
   ProjectDashboardResponse,
   setCalcScenarioBaseline,
-  updateCalcScenario,
+  updateScenario,
 } from "../api/client";
 
 export const ProjectPage = () => {
@@ -20,8 +20,15 @@ export const ProjectPage = () => {
   const [scenarioActionError, setScenarioActionError] = useState<string | null>(null);
   const [scenarioActionMessage, setScenarioActionMessage] = useState<string | null>(null);
   const [renameModal, setRenameModal] = useState<{ id: string; name: string; description: string } | null>(null);
+  const [recommendModal, setRecommendModal] = useState<{
+    id: string;
+    name: string;
+    is_recommended: boolean;
+    recommendation_note: string;
+  } | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<CalcScenario | null>(null);
   const [scenarioSaving, setScenarioSaving] = useState(false);
+  const [recommendationSaving, setRecommendationSaving] = useState(false);
   const [scenarioDeleting, setScenarioDeleting] = useState(false);
   const [baselineUpdatingId, setBaselineUpdatingId] = useState<string | null>(null);
   const [refreshPending, setRefreshPending] = useState(
@@ -144,6 +151,21 @@ export const ProjectPage = () => {
     setRenameModal({ id: scenario.id, name: scenario.name, description: scenario.description || "" });
   };
 
+  const handleRecommendationClick = (scenario: CalcScenario, nextValue: boolean) => {
+    setScenarioActionError(null);
+    setScenarioActionMessage(null);
+    setRecommendModal({
+      id: scenario.id,
+      name: scenario.name,
+      is_recommended: nextValue,
+      recommendation_note: scenario.recommendation_note || "",
+    });
+  };
+
+  const handleEditRecommendationNote = (scenario: CalcScenario) => {
+    handleRecommendationClick(scenario, scenario.is_recommended);
+  };
+
   const handleDeleteClick = (scenario: CalcScenario) => {
     setScenarioActionError(null);
     setScenarioActionMessage(null);
@@ -160,7 +182,7 @@ export const ProjectPage = () => {
     setScenarioSaving(true);
     setScenarioActionError(null);
     try {
-      await updateCalcScenario(renameModal.id, {
+      await updateScenario(renameModal.id, {
         name: trimmedName,
         description: renameModal.description.trim() ? renameModal.description.trim() : undefined,
       });
@@ -171,6 +193,32 @@ export const ProjectPage = () => {
       setScenarioActionError(getErrorMessage(err, "Не удалось переименовать сценарий. Попробуйте ещё раз."));
     } finally {
       setScenarioSaving(false);
+    }
+  };
+
+  const handleSaveRecommendation = async () => {
+    if (!recommendModal) return;
+    setRecommendationSaving(true);
+    setScenarioActionError(null);
+    setScenarioActionMessage(null);
+    const trimmedNote = recommendModal.recommendation_note.trim();
+    const noteToSave = recommendModal.is_recommended && trimmedNote ? trimmedNote : null;
+    try {
+      await updateScenario(recommendModal.id, {
+        is_recommended: recommendModal.is_recommended,
+        recommendation_note: noteToSave,
+      });
+      setScenarioActionMessage(
+        recommendModal.is_recommended ? "Сценарий отмечен как рекомендованный." : "Рекомендация снята.",
+      );
+      setRecommendModal(null);
+      loadDashboard();
+    } catch (err) {
+      setScenarioActionError(
+        getErrorMessage(err, "Не удалось обновить рекомендацию. Проверьте права доступа и попробуйте снова."),
+      );
+    } finally {
+      setRecommendationSaving(false);
     }
   };
 
@@ -290,6 +338,7 @@ export const ProjectPage = () => {
                       <th>Название</th>
                       <th>Версия схемы</th>
                       <th>Базовый</th>
+                      <th>Рекомендован</th>
                       <th>Обновлено</th>
                       <th>Действия</th>
                     </tr>
@@ -303,12 +352,17 @@ export const ProjectPage = () => {
                           <td>
                             <div className="project-name">
                               {scenario.name}
+                              {scenario.is_recommended && <span className="badge badge-recommended">Рекомендован</span>}
                               {scenario.is_baseline && <span className="badge badge-baseline">Базовый</span>}
                             </div>
                             {scenario.description && <div className="muted">{scenario.description}</div>}
                           </td>
                           <td>{versionLabel}</td>
                           <td>{scenario.is_baseline ? "Да" : "Нет"}</td>
+                          <td>
+                            {scenario.is_recommended ? "Да" : "—"}
+                            {scenario.recommendation_note && <div className="muted">{scenario.recommendation_note}</div>}
+                          </td>
                           <td>{formatDateTime(scenario.updated_at || scenario.created_at)}</td>
                           <td>
                             <div className="actions" style={{ gap: 8 }}>
@@ -327,6 +381,34 @@ export const ProjectPage = () => {
                               >
                                 Переименовать
                               </button>
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                onClick={() => handleEditRecommendationNote(scenario)}
+                                disabled={recommendationSaving}
+                              >
+                                Комментарий
+                              </button>
+                              {!scenario.is_recommended && (
+                                <button
+                                  className="btn secondary"
+                                  type="button"
+                                  onClick={() => handleRecommendationClick(scenario, true)}
+                                  disabled={recommendationSaving}
+                                >
+                                  Рекомендовать
+                                </button>
+                              )}
+                              {scenario.is_recommended && (
+                                <button
+                                  className="btn secondary"
+                                  type="button"
+                                  onClick={() => handleRecommendationClick(scenario, false)}
+                                  disabled={recommendationSaving}
+                                >
+                                  Снять рекомендацию
+                                </button>
+                              )}
                               {!scenario.is_baseline && (
                                 <button
                                   className="btn secondary"
@@ -425,6 +507,48 @@ export const ProjectPage = () => {
                 onClick={handleRenameScenario}
                 disabled={scenarioSaving || !renameModal.name.trim()}
               >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {recommendModal && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Рекомендация для сценария</h3>
+            <p className="section-subtitle">{recommendModal.name}</p>
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={recommendModal.is_recommended}
+                onChange={(e) =>
+                  setRecommendModal({
+                    ...recommendModal,
+                    is_recommended: e.target.checked,
+                  })
+                }
+              />
+              <span>Отметить как рекомендованный</span>
+            </label>
+            <label>
+              Комментарий (опционально)
+              <textarea
+                value={recommendModal.recommendation_note}
+                onChange={(e) =>
+                  setRecommendModal({
+                    ...recommendModal,
+                    recommendation_note: e.target.value,
+                  })
+                }
+                placeholder="Короткое пояснение для команды проекта"
+              />
+            </label>
+            <div className="actions modal-actions">
+              <button className="btn secondary" type="button" onClick={() => setRecommendModal(null)} disabled={recommendationSaving}>
+                Отмена
+              </button>
+              <button className="btn" type="button" onClick={handleSaveRecommendation} disabled={recommendationSaving}>
                 Сохранить
               </button>
             </div>
