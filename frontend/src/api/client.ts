@@ -1,34 +1,71 @@
-import axios from "axios";
+import axios, { AxiosResponse } from "axios";
 
 const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "";
 const API_BASE_URL = rawBaseUrl.trim() || "http://127.0.0.1:8000";
 console.info(`[GrindLab] API base URL: ${API_BASE_URL}`);
 const TOKEN_KEY = "grindlab_token";
+const AUTH_EXPIRED_ERROR = { kind: "AUTH_EXPIRED" } as const;
+
+export type AuthExpiredError = typeof AUTH_EXPIRED_ERROR;
+
+export const isAuthExpiredError = (error: unknown): error is AuthExpiredError =>
+  Boolean((error as { kind?: unknown })?.kind === AUTH_EXPIRED_ERROR.kind);
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
 }
 
-export function getToken(): string | null {
+export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string): void {
+export function setAuthToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
   api.defaults.headers.common.Authorization = `Bearer ${token}`;
 }
 
-export function clearToken(): void {
+export function clearAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY);
   delete api.defaults.headers.common.Authorization;
 }
+
+export const getToken = getAuthToken;
+export const setToken = setAuthToken;
+export const clearToken = clearAuthToken;
+
+const withAuthExpirationHandling = async <T>(
+  request: () => Promise<AxiosResponse<T>>,
+): Promise<T> => {
+  try {
+    const resp = await request();
+    return resp.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      clearAuthToken();
+      throw AUTH_EXPIRED_ERROR;
+    }
+    throw error;
+  }
+};
+
+const withAuthExpirationHandlingVoid = async (request: () => Promise<unknown>): Promise<void> => {
+  try {
+    await request();
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      clearAuthToken();
+      throw AUTH_EXPIRED_ERROR;
+    }
+    throw error;
+  }
+};
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
 api.interceptors.request.use((config) => {
-  const token = getToken();
+  const token = getAuthToken();
   if (token) {
     config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
@@ -36,7 +73,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-const existing = getToken();
+const existing = getAuthToken();
 if (existing) {
   api.defaults.headers.common.Authorization = `Bearer ${existing}`;
 }
@@ -509,13 +546,13 @@ export async function createCalcScenario(payload: {
   is_recommended?: boolean;
   recommendation_note?: string | null;
 }): Promise<CalcScenario> {
-  const resp = await api.post<CalcScenario>("/api/calc-scenarios", payload);
-  return resp.data;
+  return withAuthExpirationHandling(() => api.post<CalcScenario>("/api/calc-scenarios", payload));
 }
 
 export async function setCalcScenarioBaseline(scenarioId: string): Promise<CalcScenario> {
-  const resp = await api.post<CalcScenario>(`/api/calc-scenarios/${scenarioId}/set-baseline`);
-  return resp.data;
+  return withAuthExpirationHandling(() =>
+    api.post<CalcScenario>(`/api/calc-scenarios/${scenarioId}/set-baseline`),
+  );
 }
 
 export type UpdateScenarioPayload = {
@@ -527,8 +564,9 @@ export type UpdateScenarioPayload = {
 };
 
 export async function updateScenario(scenarioId: string, payload: UpdateScenarioPayload): Promise<CalcScenario> {
-  const resp = await api.patch<CalcScenario>(`/api/calc-scenarios/${scenarioId}`, payload);
-  return resp.data;
+  return withAuthExpirationHandling(() =>
+    api.patch<CalcScenario>(`/api/calc-scenarios/${scenarioId}`, payload),
+  );
 }
 
 export async function updateCalcScenario(
@@ -539,5 +577,5 @@ export async function updateCalcScenario(
 }
 
 export async function deleteCalcScenario(scenarioId: string): Promise<void> {
-  await api.delete(`/api/calc-scenarios/${scenarioId}`);
+  await withAuthExpirationHandlingVoid(() => api.delete(`/api/calc-scenarios/${scenarioId}`));
 }

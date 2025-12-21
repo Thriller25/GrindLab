@@ -5,7 +5,8 @@ import {
   CalcScenario,
   deleteCalcScenario,
   fetchProjectDashboard,
-  getToken,
+  getAuthToken,
+  isAuthExpiredError,
   ProjectDashboardResponse,
   setCalcScenarioBaseline,
   updateScenario,
@@ -35,7 +36,18 @@ export const ProjectPage = () => {
   const [refreshPending, setRefreshPending] = useState(
     () => new URLSearchParams(location.search).get("refresh") === "1",
   );
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getToken()));
+  const [authExpired, setAuthExpired] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getAuthToken()));
+
+  const handleAuthExpired = () => {
+    setAuthExpired(true);
+    setIsAuthenticated(false);
+    setRecommendModal(null);
+    setRenameModal(null);
+    setDeleteCandidate(null);
+    setScenarioActionError(null);
+    setScenarioActionMessage(null);
+  };
 
   const getErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as any)?.response?.data?.detail;
@@ -94,7 +106,11 @@ export const ProjectPage = () => {
   }, [loadDashboard]);
 
   useEffect(() => {
-    const syncAuthState = () => setIsAuthenticated(Boolean(getToken()));
+    const syncAuthState = () => {
+      const hasToken = Boolean(getAuthToken());
+      setIsAuthenticated(hasToken);
+      if (hasToken) setAuthExpired(false);
+    };
     syncAuthState();
     window.addEventListener("storage", syncAuthState);
     window.addEventListener("focus", syncAuthState);
@@ -147,7 +163,11 @@ export const ProjectPage = () => {
       setScenarioActionMessage("Базовый сценарий обновлён.");
       loadDashboard();
     } catch (err) {
-      setScenarioActionError(getErrorMessage(err, "Не удалось обновить базовый сценарий. Попробуйте ещё раз."));
+      if (isAuthExpiredError(err)) {
+        handleAuthExpired();
+      } else {
+        setScenarioActionError(getErrorMessage(err, "Не удалось обновить базовый сценарий. Попробуйте ещё раз."));
+      }
     } finally {
       setBaselineUpdatingId(null);
     }
@@ -204,7 +224,11 @@ export const ProjectPage = () => {
       setRenameModal(null);
       loadDashboard();
     } catch (err) {
-      setScenarioActionError(getErrorMessage(err, "Не удалось переименовать сценарий. Попробуйте ещё раз."));
+      if (isAuthExpiredError(err)) {
+        handleAuthExpired();
+      } else {
+        setScenarioActionError(getErrorMessage(err, "Не удалось переименовать сценарий. Попробуйте ещё раз."));
+      }
     } finally {
       setScenarioSaving(false);
     }
@@ -228,16 +252,19 @@ export const ProjectPage = () => {
       setRecommendModal(null);
       loadDashboard();
     } catch (err) {
-      const status = (err as any)?.response?.status;
-      if (status === 401) {
-        setScenarioActionError("Сессия истекла. Войдите снова.");
-        setIsAuthenticated(false);
-      } else if (status === 403) {
-        setScenarioActionError("Недостаточно прав для изменения рекомендации.");
+      if (isAuthExpiredError(err)) {
+        handleAuthExpired();
       } else {
-        setScenarioActionError(
-          getErrorMessage(err, "Не удалось обновить рекомендацию. Проверьте права доступа и попробуйте снова."),
-        );
+        const status = (err as any)?.response?.status;
+        if (status === 401) {
+          handleAuthExpired();
+        } else if (status === 403) {
+          setScenarioActionError("Недостаточно прав для изменения рекомендации.");
+        } else {
+          setScenarioActionError(
+            getErrorMessage(err, "Не удалось обновить рекомендацию. Проверьте права доступа и попробуйте снова."),
+          );
+        }
       }
     } finally {
       setRecommendationSaving(false);
@@ -255,11 +282,15 @@ export const ProjectPage = () => {
       setDeleteCandidate(null);
       loadDashboard();
     } catch (err) {
-      const status = (err as any)?.response?.status;
-      if (status === 409) {
-        setScenarioActionError("Нельзя удалить сценарий: по нему уже есть расчёты.");
+      if (isAuthExpiredError(err)) {
+        handleAuthExpired();
       } else {
-        setScenarioActionError("Не удалось удалить сценарий. Попробуйте ещё раз.");
+        const status = (err as any)?.response?.status;
+        if (status === 409) {
+          setScenarioActionError("Нельзя удалить сценарий: по нему уже есть расчёты.");
+        } else {
+          setScenarioActionError("Не удалось удалить сценарий. Попробуйте ещё раз.");
+        }
       }
     } finally {
       setScenarioDeleting(false);
@@ -351,6 +382,17 @@ export const ProjectPage = () => {
                 <h2>Сценарии</h2>
                 <p className="section-subtitle">Всего: {summary?.scenarios_total ?? scenarios.length ?? 0}</p>
               </div>
+              {authExpired && (
+                <div
+                  className="alert error"
+                  style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between" }}
+                >
+                  <span>Сессия истекла. Войдите снова.</span>
+                  <button className="btn" type="button" onClick={() => navigate("/login")}>
+                    Войти
+                  </button>
+                </div>
+              )}
               {scenarioActionError && <div className="alert error">{scenarioActionError}</div>}
               {scenarioActionMessage && <div className="alert success">{scenarioActionMessage}</div>}
               {!isAuthenticated && (
@@ -413,7 +455,7 @@ export const ProjectPage = () => {
                                 type="button"
                                 onClick={() => handleEditRecommendationNote(scenario)}
                                 disabled={recommendationSaving || !isAuthenticated}
-                                title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
+                                title={!isAuthenticated ? "Требуется вход" : undefined}
                               >
                                 Комментарий
                               </button>
@@ -423,7 +465,7 @@ export const ProjectPage = () => {
                                   type="button"
                                   onClick={() => handleRecommendationClick(scenario, true)}
                                   disabled={recommendationSaving || !isAuthenticated}
-                                  title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
+                                  title={!isAuthenticated ? "Требуется вход" : undefined}
                                 >
                                   Рекомендовать
                                 </button>
@@ -434,7 +476,7 @@ export const ProjectPage = () => {
                                   type="button"
                                   onClick={() => handleRecommendationClick(scenario, false)}
                                   disabled={recommendationSaving || !isAuthenticated}
-                                  title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
+                                  title={!isAuthenticated ? "Требуется вход" : undefined}
                                 >
                                   Снять рекомендацию
                                 </button>

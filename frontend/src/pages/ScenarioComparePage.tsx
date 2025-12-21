@@ -7,7 +7,8 @@ import {
   fetchGrindMvpRun,
   fetchProjectDashboard,
   GrindMvpRunDetail,
-  getToken,
+  getAuthToken,
+  isAuthExpiredError,
   updateScenario,
   ProjectDashboardResponse,
 } from "../api/client";
@@ -307,10 +308,23 @@ export const ScenarioComparePage = () => {
   const [recommendationSaving, setRecommendationSaving] = useState(false);
   const [recommendationMessage, setRecommendationMessage] = useState<string | null>(null);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getToken()));
+  const [authExpired, setAuthExpired] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getAuthToken()));
+
+  const handleAuthExpired = () => {
+    setAuthExpired(true);
+    setIsAuthenticated(false);
+    setRecommendModal(null);
+    setRecommendationError(null);
+    setRecommendationMessage(null);
+  };
 
   useEffect(() => {
-    const syncAuthState = () => setIsAuthenticated(Boolean(getToken()));
+    const syncAuthState = () => {
+      const hasToken = Boolean(getAuthToken());
+      setIsAuthenticated(hasToken);
+      if (hasToken) setAuthExpired(false);
+    };
     syncAuthState();
     window.addEventListener("storage", syncAuthState);
     window.addEventListener("focus", syncAuthState);
@@ -785,19 +799,22 @@ export const ScenarioComparePage = () => {
       );
       setRecommendModal(null);
     } catch (err) {
-      const status = (err as any)?.response?.status;
-      if (status === 401) {
-        setRecommendationError("Сессия истекла. Войдите снова.");
-        setIsAuthenticated(false);
-      } else if (status === 403) {
-        setRecommendationError("Недостаточно прав для изменения рекомендации.");
+      if (isAuthExpiredError(err)) {
+        handleAuthExpired();
       } else {
-        const detail = (err as any)?.response?.data?.detail;
-        setRecommendationError(
-          typeof detail === "string"
-            ? detail
-            : "Не удалось обновить рекомендацию. Авторизуйтесь и попробуйте снова.",
-        );
+        const status = (err as any)?.response?.status;
+        if (status === 401) {
+          handleAuthExpired();
+        } else if (status === 403) {
+          setRecommendationError("Недостаточно прав для изменения рекомендации.");
+        } else {
+          const detail = (err as any)?.response?.data?.detail;
+          setRecommendationError(
+            typeof detail === "string"
+              ? detail
+              : "Не удалось обновить рекомендацию. Авторизуйтесь и попробуйте снова.",
+          );
+        }
       }
     } finally {
       setRecommendationSaving(false);
@@ -1054,6 +1071,17 @@ export const ScenarioComparePage = () => {
         {!loading && !error && selectedScenario && (
           <>
             {runsError && <div className="general-error">{runsError}</div>}
+            {authExpired && (
+              <div
+                className="alert error"
+                style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between" }}
+              >
+                <span>Сессия истекла. Войдите снова.</span>
+                <button className="btn" type="button" onClick={() => navigate("/login")}>
+                  Войти
+                </button>
+              </div>
+            )}
             {recommendationError && <div className="alert error">{recommendationError}</div>}
             {recommendationMessage && <div className="alert success">{recommendationMessage}</div>}
             {!isAuthenticated && (
@@ -1076,7 +1104,7 @@ export const ScenarioComparePage = () => {
                     type="button"
                     onClick={() => openRecommendationModal(selectedScenario.is_recommended)}
                     disabled={recommendationSaving || !isAuthenticated}
-                    title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
+                    title={!isAuthenticated ? "Требуется вход" : undefined}
                   >
                     Комментарий
                   </button>
@@ -1087,7 +1115,7 @@ export const ScenarioComparePage = () => {
                     type="button"
                     onClick={() => openRecommendationModal(!selectedScenario.is_recommended)}
                     disabled={recommendationSaving || !isAuthenticated}
-                    title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
+                    title={!isAuthenticated ? "Требуется вход" : undefined}
                   >
                     {selectedScenario.is_recommended ? "Снять рекомендацию" : "Рекомендовать сценарий"}
                   </button>
