@@ -7,6 +7,7 @@ import {
   fetchGrindMvpRun,
   fetchProjectDashboard,
   GrindMvpRunDetail,
+  getToken,
   updateScenario,
   ProjectDashboardResponse,
 } from "../api/client";
@@ -144,7 +145,15 @@ const validateRangeGoal = (goal: KpiGoal): string | null => {
   return null;
 };
 
-type MissingState = { message: string; allowScenarioRun?: boolean; allowBaselineRun?: boolean };
+type MissingState = {
+  message: string;
+  allowScenarioRun?: boolean;
+  allowBaselineRun?: boolean;
+  type?: "flowsheet-mismatch" | "missing-runs" | "missing-baseline" | "missing-scenario";
+  ctaPath?: string;
+  ctaLabel?: string;
+  hideSelectors?: boolean;
+};
 type SortMode = "default" | "absDelta";
 
 const MISSING_VALUE_TEXT = "—";
@@ -298,6 +307,18 @@ export const ScenarioComparePage = () => {
   const [recommendationSaving, setRecommendationSaving] = useState(false);
   const [recommendationMessage, setRecommendationMessage] = useState<string | null>(null);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getToken()));
+
+  useEffect(() => {
+    const syncAuthState = () => setIsAuthenticated(Boolean(getToken()));
+    syncAuthState();
+    window.addEventListener("storage", syncAuthState);
+    window.addEventListener("focus", syncAuthState);
+    return () => {
+      window.removeEventListener("storage", syncAuthState);
+      window.removeEventListener("focus", syncAuthState);
+    };
+  }, []);
 
   const flowsheetVersionNameById = useMemo(() => {
     if (!dashboard?.flowsheet_versions) return {};
@@ -361,9 +382,14 @@ export const ScenarioComparePage = () => {
     if (selectedScenario.flowsheet_version_id !== baselineScenario.flowsheet_version_id) {
       setRunsError(null);
       setMissingState({
-        message: "Сценарии относятся к разным версиям схем. Сравнение доступно только при одинаковой версии.",
+        message:
+          "Базовый сценарий относится к другой версии схемы. Сравнение возможно только для сценариев одной версии.",
         allowBaselineRun: false,
         allowScenarioRun: false,
+        type: "flowsheet-mismatch",
+        ctaPath: projectId ? `/projects/${projectId}` : "/",
+        ctaLabel: "Перейти в проект и сменить базовый",
+        hideSelectors: true,
       });
       setScenarioRuns([]);
       setBaselineRuns([]);
@@ -455,7 +481,7 @@ export const ScenarioComparePage = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedScenario, baselineScenario]);
+  }, [baselineScenario, projectId, selectedScenario]);
 
   useEffect(() => {
     if (!selectedScenarioRunId) {
@@ -633,6 +659,7 @@ export const ScenarioComparePage = () => {
   };
 
   const comparisonLoading = runsLoading || scenarioRunLoading || baselineRunLoading;
+  const hideRunSelectors = Boolean(missingState?.hideSelectors);
 
   const comparisonMetrics = useMemo<MetricRow[]>(() => {
     if (!scenarioRun || !baselineRun) return [];
@@ -731,7 +758,7 @@ export const ScenarioComparePage = () => {
   };
 
   const openRecommendationModal = (nextValue?: boolean) => {
-    if (!selectedScenario) return;
+    if (!selectedScenario || !isAuthenticated) return;
     setRecommendationError(null);
     setRecommendationMessage(null);
     setRecommendModal({
@@ -741,7 +768,7 @@ export const ScenarioComparePage = () => {
   };
 
   const handleSaveRecommendation = async () => {
-    if (!selectedScenario || !recommendModal) return;
+    if (!selectedScenario || !recommendModal || !isAuthenticated) return;
     setRecommendationSaving(true);
     setRecommendationError(null);
     setRecommendationMessage(null);
@@ -758,12 +785,20 @@ export const ScenarioComparePage = () => {
       );
       setRecommendModal(null);
     } catch (err) {
-      const detail = (err as any)?.response?.data?.detail;
-      setRecommendationError(
-        typeof detail === "string"
-          ? detail
-          : "Не удалось обновить рекомендацию. Авторизуйтесь и попробуйте снова.",
-      );
+      const status = (err as any)?.response?.status;
+      if (status === 401) {
+        setRecommendationError("Сессия истекла. Войдите снова.");
+        setIsAuthenticated(false);
+      } else if (status === 403) {
+        setRecommendationError("Недостаточно прав для изменения рекомендации.");
+      } else {
+        const detail = (err as any)?.response?.data?.detail;
+        setRecommendationError(
+          typeof detail === "string"
+            ? detail
+            : "Не удалось обновить рекомендацию. Авторизуйтесь и попробуйте снова.",
+        );
+      }
     } finally {
       setRecommendationSaving(false);
     }
@@ -843,13 +878,19 @@ export const ScenarioComparePage = () => {
   const renderMissing = (state: MissingState) => {
     const allowScenarioRun = state.allowScenarioRun ?? true;
     const allowBaselineRun = state.allowBaselineRun ?? false;
+    const hasCta = Boolean(state.ctaPath && state.ctaLabel);
     const hasActions =
-      (allowScenarioRun && selectedScenario) || (allowBaselineRun && baselineScenario);
+      (allowScenarioRun && selectedScenario) || (allowBaselineRun && baselineScenario) || hasCta;
     return (
       <div className="empty-state" style={{ marginTop: 12 }}>
         <div>{state.message}</div>
         {hasActions && (
           <div className="actions" style={{ marginTop: 10 }}>
+            {hasCta && state.ctaPath && state.ctaLabel && (
+              <button className="btn" type="button" onClick={() => navigate(state.ctaPath!)}>
+                {state.ctaLabel}
+              </button>
+            )}
             {allowScenarioRun && selectedScenario && (
               <button className="btn" type="button" onClick={() => handleRunScenario(selectedScenario.id)}>
                 Запустить сценарий
@@ -1015,6 +1056,11 @@ export const ScenarioComparePage = () => {
             {runsError && <div className="general-error">{runsError}</div>}
             {recommendationError && <div className="alert error">{recommendationError}</div>}
             {recommendationMessage && <div className="alert success">{recommendationMessage}</div>}
+            {!isAuthenticated && (
+              <div className="muted" style={{ marginBottom: 8 }}>
+                Требуется вход, чтобы менять рекомендацию.
+              </div>
+            )}
 
             <section className="section">
               <div className="section-heading">
@@ -1029,7 +1075,8 @@ export const ScenarioComparePage = () => {
                     className="btn secondary"
                     type="button"
                     onClick={() => openRecommendationModal(selectedScenario.is_recommended)}
-                    disabled={recommendationSaving}
+                    disabled={recommendationSaving || !isAuthenticated}
+                    title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
                   >
                     Комментарий
                   </button>
@@ -1039,53 +1086,56 @@ export const ScenarioComparePage = () => {
                     className="btn"
                     type="button"
                     onClick={() => openRecommendationModal(!selectedScenario.is_recommended)}
-                    disabled={recommendationSaving}
+                    disabled={recommendationSaving || !isAuthenticated}
+                    title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
                   >
                     {selectedScenario.is_recommended ? "Снять рекомендацию" : "Рекомендовать сценарий"}
                   </button>
                 )}
               </div>
 
-              <div className="grid" style={{ gap: 12, marginBottom: 12 }}>
-                <label className="filter-control">
-                  Запуск сценария
-                  <select
-                    className="input"
-                    value={selectedScenarioRunId ?? ""}
-                    onChange={(e) => setSelectedScenarioRunId(e.target.value || null)}
-                    disabled={runsLoading || !scenarioRuns.length}
-                  >
-                    {scenarioRuns.length ? (
-                      scenarioRuns.map((run) => (
-                        <option key={run.id} value={run.id}>
-                          {formatRunLabel(run)}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">Нет успешных запусков</option>
-                    )}
-                  </select>
-                </label>
-                <label className="filter-control">
-                  Запуск базового сценария
-                  <select
-                    className="input"
-                    value={selectedBaselineRunId ?? ""}
-                    onChange={(e) => setSelectedBaselineRunId(e.target.value || null)}
-                    disabled={runsLoading || !baselineRuns.length}
-                  >
-                    {baselineRuns.length ? (
-                      baselineRuns.map((run) => (
-                        <option key={run.id} value={run.id}>
-                          {formatRunLabel(run)}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="">Нет успешных запусков</option>
-                    )}
-                  </select>
-                </label>
-              </div>
+              {!hideRunSelectors && (
+                <div className="grid" style={{ gap: 12, marginBottom: 12 }}>
+                  <label className="filter-control">
+                    Запуск сценария
+                    <select
+                      className="input"
+                      value={selectedScenarioRunId ?? ""}
+                      onChange={(e) => setSelectedScenarioRunId(e.target.value || null)}
+                      disabled={runsLoading || !scenarioRuns.length}
+                    >
+                      {scenarioRuns.length ? (
+                        scenarioRuns.map((run) => (
+                          <option key={run.id} value={run.id}>
+                            {formatRunLabel(run)}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">Нет успешных запусков</option>
+                      )}
+                    </select>
+                  </label>
+                  <label className="filter-control">
+                    Запуск базового сценария
+                    <select
+                      className="input"
+                      value={selectedBaselineRunId ?? ""}
+                      onChange={(e) => setSelectedBaselineRunId(e.target.value || null)}
+                      disabled={runsLoading || !baselineRuns.length}
+                    >
+                      {baselineRuns.length ? (
+                        baselineRuns.map((run) => (
+                          <option key={run.id} value={run.id}>
+                            {formatRunLabel(run)}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">Нет успешных запусков</option>
+                      )}
+                    </select>
+                  </label>
+                </div>
+              )}
 
               <div className="grid">
                 <div className="stat">

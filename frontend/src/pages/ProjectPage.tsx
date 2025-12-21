@@ -5,6 +5,7 @@ import {
   CalcScenario,
   deleteCalcScenario,
   fetchProjectDashboard,
+  getToken,
   ProjectDashboardResponse,
   setCalcScenarioBaseline,
   updateScenario,
@@ -34,6 +35,7 @@ export const ProjectPage = () => {
   const [refreshPending, setRefreshPending] = useState(
     () => new URLSearchParams(location.search).get("refresh") === "1",
   );
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getToken()));
 
   const getErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as any)?.response?.data?.detail;
@@ -90,6 +92,17 @@ export const ProjectPage = () => {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    const syncAuthState = () => setIsAuthenticated(Boolean(getToken()));
+    syncAuthState();
+    window.addEventListener("storage", syncAuthState);
+    window.addEventListener("focus", syncAuthState);
+    return () => {
+      window.removeEventListener("storage", syncAuthState);
+      window.removeEventListener("focus", syncAuthState);
+    };
+  }, []);
 
   useEffect(() => {
     if (!refreshPending || !projectId) return;
@@ -152,6 +165,7 @@ export const ProjectPage = () => {
   };
 
   const handleRecommendationClick = (scenario: CalcScenario, nextValue: boolean) => {
+    if (!isAuthenticated) return;
     setScenarioActionError(null);
     setScenarioActionMessage(null);
     setRecommendModal({
@@ -197,7 +211,7 @@ export const ProjectPage = () => {
   };
 
   const handleSaveRecommendation = async () => {
-    if (!recommendModal) return;
+    if (!recommendModal || !isAuthenticated) return;
     setRecommendationSaving(true);
     setScenarioActionError(null);
     setScenarioActionMessage(null);
@@ -214,9 +228,17 @@ export const ProjectPage = () => {
       setRecommendModal(null);
       loadDashboard();
     } catch (err) {
-      setScenarioActionError(
-        getErrorMessage(err, "Не удалось обновить рекомендацию. Проверьте права доступа и попробуйте снова."),
-      );
+      const status = (err as any)?.response?.status;
+      if (status === 401) {
+        setScenarioActionError("Сессия истекла. Войдите снова.");
+        setIsAuthenticated(false);
+      } else if (status === 403) {
+        setScenarioActionError("Недостаточно прав для изменения рекомендации.");
+      } else {
+        setScenarioActionError(
+          getErrorMessage(err, "Не удалось обновить рекомендацию. Проверьте права доступа и попробуйте снова."),
+        );
+      }
     } finally {
       setRecommendationSaving(false);
     }
@@ -331,6 +353,11 @@ export const ProjectPage = () => {
               </div>
               {scenarioActionError && <div className="alert error">{scenarioActionError}</div>}
               {scenarioActionMessage && <div className="alert success">{scenarioActionMessage}</div>}
+              {!isAuthenticated && (
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  Требуется вход, чтобы менять рекомендацию.
+                </div>
+              )}
               {scenarios.length ? (
                 <table className="table">
                   <thead>
@@ -385,7 +412,8 @@ export const ProjectPage = () => {
                                 className="btn secondary"
                                 type="button"
                                 onClick={() => handleEditRecommendationNote(scenario)}
-                                disabled={recommendationSaving}
+                                disabled={recommendationSaving || !isAuthenticated}
+                                title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
                               >
                                 Комментарий
                               </button>
@@ -394,7 +422,8 @@ export const ProjectPage = () => {
                                   className="btn secondary"
                                   type="button"
                                   onClick={() => handleRecommendationClick(scenario, true)}
-                                  disabled={recommendationSaving}
+                                  disabled={recommendationSaving || !isAuthenticated}
+                                  title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
                                 >
                                   Рекомендовать
                                 </button>
@@ -404,7 +433,8 @@ export const ProjectPage = () => {
                                   className="btn secondary"
                                   type="button"
                                   onClick={() => handleRecommendationClick(scenario, false)}
-                                  disabled={recommendationSaving}
+                                  disabled={recommendationSaving || !isAuthenticated}
+                                  title={!isAuthenticated ? "Требуется вход, чтобы менять рекомендацию." : undefined}
                                 >
                                   Снять рекомендацию
                                 </button>
