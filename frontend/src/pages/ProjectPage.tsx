@@ -363,13 +363,35 @@ export const ProjectPage = () => {
                           {recentRuns.length ? (
                             <ul className="projects-list">
                               {recentRuns.map((run) => (
-                                <li key={run.id} className="project-item">
+                                <li
+                                  key={run.id}
+                                  className="project-item"
+                                  onClick={() => handleOpenRunDetails(run.id)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && e.currentTarget === e.target) handleOpenRunDetails(run.id);
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                  style={{ cursor: "pointer" }}
+                                >
                                   <div className="project-name">
                                     {run.scenario_name || "Без сценария"}
                                     {run.is_baseline && <span className="badge badge-baseline">Базовый</span>}
                                   </div>
                                   <div className="project-updated muted">{formatDateTime(run.started_at)}</div>
                                   {run.status && <div className="chip small">{run.status}</div>}
+                                  <div className="actions" style={{ marginTop: 6 }}>
+                                    <button
+                                      className="btn secondary"
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenRunDetails(run.id);
+                                      }}
+                                    >
+                                      Открыть
+                                    </button>
+                                  </div>
                                 </li>
                               ))}
                             </ul>

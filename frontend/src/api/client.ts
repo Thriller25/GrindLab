@@ -376,6 +376,11 @@ export interface CalcRunRead {
   result_json?: any;
 }
 
+export async function fetchCalcRun(runId: string | number): Promise<CalcRunRead> {
+  const resp = await api.get<CalcRunRead>(`/api/calc-runs/${runId}`);
+  return resp.data;
+}
+
 export interface CalcRunListItem {
   id: string;
   flowsheet_version_id: string;

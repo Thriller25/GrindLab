@@ -835,6 +835,11 @@ export const ScenarioComparePage = () => {
     }
   };
 
+  const handleOpenRunDetails = (id?: string | null) => {
+    if (!id) return;
+    navigate(`/calc-runs/${id}`);
+  };
+
   const setGoalForMetric = (metricKey: string, updater: (goal: KpiGoal) => KpiGoal) => {
     setKpiGoals((prev) => {
       const current = normalizeGoal(prev[metricKey] ?? defaultGoalForKey(metricKey));
@@ -1166,6 +1171,17 @@ export const ScenarioComparePage = () => {
                       "—"
                     )}
                   </div>
+                  {scenarioRunOption && (
+                    <div className="actions" style={{ marginTop: 8 }}>
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => handleOpenRunDetails(scenarioRunOption.id)}
+                      >
+                        Открыть запуск
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="stat">
                   <div className="stat-label">Базовый сценарий</div>
@@ -1183,6 +1199,17 @@ export const ScenarioComparePage = () => {
                       "—"
                     )}
                   </div>
+                  {baselineRunOption && (
+                    <div className="actions" style={{ marginTop: 8 }}>
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => handleOpenRunDetails(baselineRunOption.id)}
+                      >
+                        Открыть запуск
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

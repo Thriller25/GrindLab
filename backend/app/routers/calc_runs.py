@@ -234,3 +234,18 @@ def compare_calc_runs_with_baseline(
         items.append(CalcRunCompareWithBaselineItem(run=run_item, deltas=deltas))
 
     return CalcRunCompareWithBaselineResponse(baseline=baseline_item, items=items, total=len(items))
+
+
+@router.get(
+    "/{calc_run_id}",
+    response_model=CalcRunRead,
+    summary="Get calc run by id",
+)
+def get_calc_run_by_id(
+    calc_run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> CalcRunRead:
+    calc_run = db.get(models.CalcRun, calc_run_id)
+    if calc_run is None:
+        raise HTTPException(status_code=404, detail="Calc run not found")
+    return CalcRunRead.model_validate(calc_run, from_attributes=True)

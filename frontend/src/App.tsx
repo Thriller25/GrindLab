@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { CalcRunPage } from "./pages/CalcRunPage";
+import { CalcRunDetailPage } from "./pages/CalcRunDetailPage";
 import { CalcScenariosPage } from "./pages/CalcScenariosPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ScenarioComparePage } from "./pages/ScenarioComparePage";
@@ -13,6 +14,7 @@ export const App = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/calc-run" element={<CalcRunPage />} />
+        <Route path="/calc-runs/:runId" element={<CalcRunDetailPage />} />
         <Route path="/calc-scenarios" element={<CalcScenariosPage />} />
         <Route path="/projects/:projectId" element={<ProjectPage />} />
         <Route path="/projects/:projectId/scenarios/:scenarioId/compare" element={<ScenarioComparePage />} />
