@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app import models
@@ -176,10 +176,12 @@ def _get_project_runs(
 ) -> list[models.CalcRun]:
     return (
         db.query(models.CalcRun)
+        .outerjoin(models.CalcScenario, models.CalcScenario.id == models.CalcRun.scenario_id)
         .filter(
             models.CalcRun.project_id == project_id,
             models.CalcRun.flowsheet_version_id == flowsheet_version_id,
             models.CalcRun.status == "success",
+            or_(models.CalcScenario.is_baseline.is_(False), models.CalcRun.scenario_id.is_(None)),
         )
         .all()
     )
@@ -510,22 +512,6 @@ def _calculate_project_summary(
         .all()
     ]
 
-    comments_total = 0
-    if scenario_ids:
-        comments_total += (
-            db.query(func.count(models.Comment.id))
-            .filter(models.Comment.entity_type == "scenario", models.Comment.entity_id.in_(scenario_ids))
-            .scalar()
-            or 0
-        )
-    if run_ids:
-        comments_total += (
-            db.query(func.count(models.Comment.id))
-            .filter(models.Comment.entity_type == "calc_run", models.Comment.entity_id.in_(run_ids))
-            .scalar()
-            or 0
-        )
-
     scenario_last = (
         db.query(func.max(models.CalcScenario.created_at)).filter(models.CalcScenario.id.in_(scenario_ids)).scalar()
         if scenario_ids
@@ -535,21 +521,12 @@ def _calculate_project_summary(
         db.query(func.max(models.CalcRun.started_at)).filter(models.CalcRun.id.in_(run_ids)).scalar() if run_ids else None
     )
 
-    comment_last_candidates = []
-    if scenario_ids:
-        comment_last_candidates.append(
-            db.query(func.max(models.Comment.created_at))
-            .filter(models.Comment.entity_type == "scenario", models.Comment.entity_id.in_(scenario_ids))
-            .scalar()
-        )
-    if run_ids:
-        comment_last_candidates.append(
-            db.query(func.max(models.Comment.created_at))
-            .filter(models.Comment.entity_type == "calc_run", models.Comment.entity_id.in_(run_ids))
-            .scalar()
-        )
-    comment_last_candidates = [dt for dt in comment_last_candidates if dt is not None]
-    comment_last = max(comment_last_candidates) if comment_last_candidates else None
+    comments_total = (
+        db.query(func.count(models.Comment.id)).filter(models.Comment.project_id == project.id).scalar() or 0
+    )
+    comment_last = (
+        db.query(func.max(models.Comment.created_at)).filter(models.Comment.project_id == project.id).scalar()
+    )
 
     last_candidates = [dt for dt in (scenario_last, run_last, comment_last) if dt is not None]
     last_activity_at = max(last_candidates) if last_candidates else None
@@ -739,20 +716,13 @@ def get_project_dashboard(
         .all()
     ] if flowsheet_version_ids else []
 
-    recent_comments: list[models.Comment] = []
-    conditions = []
-    if scenario_ids:
-        conditions.append(and_(models.Comment.entity_type == "scenario", models.Comment.entity_id.in_(scenario_ids)))
-    if run_ids:
-        conditions.append(and_(models.Comment.entity_type == "calc_run", models.Comment.entity_id.in_(run_ids)))
-    if conditions:
-        recent_comments = (
-            db.query(models.Comment)
-            .filter(or_(*conditions))
-            .order_by(models.Comment.created_at.desc())
-            .limit(RECENT_COMMENTS_LIMIT)
-            .all()
-        )
+    recent_comments = (
+        db.query(models.Comment)
+        .filter(models.Comment.project_id == project.id)
+        .order_by(models.Comment.created_at.desc(), models.Comment.id.desc())
+        .limit(RECENT_COMMENTS_LIMIT)
+        .all()
+    )
     recent_comments_dto = [CommentRead.model_validate(c, from_attributes=True) for c in recent_comments]
 
     return ProjectDashboardResponse(

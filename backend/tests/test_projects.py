@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app import models
 from app.db import SessionLocal
 
-from .utils import create_flowsheet, create_flowsheet_version, create_plant
+from .utils import create_flowsheet, create_flowsheet_version, create_plant, link_project_to_version
 
 
 def _register_and_token(client: TestClient, email: str, password: str) -> tuple[str, str]:
@@ -221,14 +221,14 @@ def test_project_summary_with_activity(client: TestClient):
     run_id = run_resp.json()["id"]
 
     comment_resp1 = client.post(
-        f"/api/calc-scenarios/{scenario_id}/comments/me",
-        json={"text": "Scenario comment"},
+        f"/api/projects/{project_id}/comments",
+        json={"scenario_id": scenario_id, "text": "Scenario comment"},
         headers=headers,
     )
     assert comment_resp1.status_code in (200, 201)
     comment_resp2 = client.post(
-        f"/api/calc-runs/{run_id}/comments/me",
-        json={"text": "Run comment"},
+        f"/api/projects/{project_id}/comments",
+        json={"calc_run_id": run_id, "text": "Run comment"},
         headers=headers,
     )
     assert comment_resp2.status_code in (200, 201)
@@ -258,8 +258,8 @@ def test_project_summary_with_activity(client: TestClient):
     assert grind_resp.status_code == 200
     grind_run_id = grind_resp.json()["calc_run_id"]
     grind_comment_resp = client.post(
-        f"/api/calc-runs/{grind_run_id}/comments/me",
-        json={"text": "Project run comment"},
+        f"/api/projects/{project_id}/comments",
+        json={"calc_run_id": grind_run_id, "text": "Project run comment"},
         headers=headers,
     )
     assert grind_comment_resp.status_code in (200, 201)
@@ -270,7 +270,7 @@ def test_project_summary_with_activity(client: TestClient):
     assert summary["flowsheet_versions_total"] == 1
     assert summary["scenarios_total"] >= 1
     assert summary["calc_runs_total"] >= 1
-    assert summary["comments_total"] >= 2
+    assert summary["comments_total"] >= 3
     assert summary["calc_runs_by_status"].get("success", 0) >= 1
     assert summary["last_activity_at"] is not None
 
@@ -459,6 +459,9 @@ def test_list_grind_mvp_runs_by_project_and_flowsheet_version(client: TestClient
     assert project_resp.status_code == 201
     project_id = project_resp.json()["id"]
 
+    link_project_to_version(client, project_id, version_a, headers=headers)
+    link_project_to_version(client, project_id, version_b, headers=headers)
+
     # create runs for version_a
     payload = {
         "model_version": "grind_mvp_v1",
@@ -544,14 +547,14 @@ def test_project_dashboard_with_data(client: TestClient):
     run_id = run_resp.json()["id"]
 
     comment_resp1 = client.post(
-        f"/api/calc-scenarios/{scenario_id}/comments/me",
-        json={"text": "Scenario dash comment"},
+        f"/api/projects/{project_id}/comments",
+        json={"scenario_id": scenario_id, "text": "Scenario dash comment"},
         headers=headers,
     )
     assert comment_resp1.status_code in (200, 201)
     comment_resp2 = client.post(
-        f"/api/calc-runs/{run_id}/comments/me",
-        json={"text": "Run dash comment"},
+        f"/api/projects/{project_id}/comments",
+        json={"calc_run_id": run_id, "text": "Run dash comment"},
         headers=headers,
     )
     assert comment_resp2.status_code in (200, 201)

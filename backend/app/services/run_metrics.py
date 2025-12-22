@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
@@ -45,10 +46,12 @@ def find_best_project_run(
 ) -> Optional[models.CalcRun]:
     runs = (
         db.query(models.CalcRun)
+        .outerjoin(models.CalcScenario, models.CalcScenario.id == models.CalcRun.scenario_id)
         .filter(
             models.CalcRun.project_id == project_id,
             models.CalcRun.flowsheet_version_id == flowsheet_version_id,
             models.CalcRun.status == "success",
+            or_(models.CalcScenario.is_baseline.is_(False), models.CalcRun.scenario_id.is_(None)),
         )
         .all()
     )

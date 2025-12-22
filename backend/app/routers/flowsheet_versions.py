@@ -215,17 +215,19 @@ def export_flowsheet_version_bundle(version_id: uuid.UUID, db: Session = Depends
     )
     scenario_ids = [scenario.id for scenario in scenarios]
     run_ids = [run.id for run in runs]
-    comments = (
-        db.query(models.Comment)
-        .filter(
-            (
-                (models.Comment.entity_type == "scenario") & (models.Comment.entity_id.in_(scenario_ids))
+    comments: list[models.Comment] = []
+    if scenario_ids or run_ids:
+        comment_query = db.query(models.Comment)
+        if scenario_ids and run_ids:
+            comment_query = comment_query.filter(
+                (models.Comment.scenario_id.in_(scenario_ids))
+                | (models.Comment.calc_run_id.in_(run_ids))
             )
-            | ((models.Comment.entity_type == "calc_run") & (models.Comment.entity_id.in_(run_ids)))
-        )
-        .order_by(models.Comment.created_at.desc())
-        .all()
-    )
+        elif scenario_ids:
+            comment_query = comment_query.filter(models.Comment.scenario_id.in_(scenario_ids))
+        else:
+            comment_query = comment_query.filter(models.Comment.calc_run_id.in_(run_ids))
+        comments = comment_query.order_by(models.Comment.created_at.desc()).all()
 
     return FlowsheetVersionExportBundle(
         plant=PlantRead.model_validate(plant, from_attributes=True),
