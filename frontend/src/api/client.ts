@@ -1,9 +1,9 @@
 import axios, { AxiosResponse } from "axios";
+import { clearAuth, getAccessToken } from "../auth/authProvider";
 
 const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "";
 const API_BASE_URL = rawBaseUrl.trim() || "http://127.0.0.1:8000";
 console.info(`[GrindLab] API base URL: ${API_BASE_URL}`);
-const TOKEN_KEY = "grindlab_token";
 const AUTH_EXPIRED_ERROR = { kind: "AUTH_EXPIRED" } as const;
 
 export type AuthExpiredError = typeof AUTH_EXPIRED_ERROR;
@@ -15,24 +15,6 @@ export function getApiBaseUrl(): string {
   return API_BASE_URL;
 }
 
-export function getAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setAuthToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-  api.defaults.headers.common.Authorization = `Bearer ${token}`;
-}
-
-export function clearAuthToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  delete api.defaults.headers.common.Authorization;
-}
-
-export const getToken = getAuthToken;
-export const setToken = setAuthToken;
-export const clearToken = clearAuthToken;
-
 const withAuthExpirationHandling = async <T>(
   request: () => Promise<AxiosResponse<T>>,
 ): Promise<T> => {
@@ -41,7 +23,7 @@ const withAuthExpirationHandling = async <T>(
     return resp.data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      clearAuthToken();
+      clearAuth();
       throw AUTH_EXPIRED_ERROR;
     }
     throw error;
@@ -53,7 +35,7 @@ const withAuthExpirationHandlingVoid = async (request: () => Promise<unknown>): 
     await request();
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      clearAuthToken();
+      clearAuth();
       throw AUTH_EXPIRED_ERROR;
     }
     throw error;
@@ -65,18 +47,13 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = getAuthToken();
+  const token = getAccessToken();
   if (token) {
     config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
-
-const existing = getAuthToken();
-if (existing) {
-  api.defaults.headers.common.Authorization = `Bearer ${existing}`;
-}
 
 export interface DashboardSummary {
   calc_runs_total?: number;

@@ -5,12 +5,12 @@ import {
   CalcScenario,
   deleteCalcScenario,
   fetchProjectDashboard,
-  getAuthToken,
   isAuthExpiredError,
   ProjectDashboardResponse,
   setCalcScenarioBaseline,
   updateScenario,
 } from "../api/client";
+import { hasAuth } from "../auth/authProvider";
 
 export const ProjectPage = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -37,7 +37,7 @@ export const ProjectPage = () => {
     () => new URLSearchParams(location.search).get("refresh") === "1",
   );
   const [authExpired, setAuthExpired] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getAuthToken()));
+  const [isAuthenticated, setIsAuthenticated] = useState(() => hasAuth());
 
   const handleAuthExpired = () => {
     setAuthExpired(true);
@@ -107,7 +107,7 @@ export const ProjectPage = () => {
 
   useEffect(() => {
     const syncAuthState = () => {
-      const hasToken = Boolean(getAuthToken());
+      const hasToken = hasAuth();
       setIsAuthenticated(hasToken);
       if (hasToken) setAuthExpired(false);
     };
@@ -136,6 +136,7 @@ export const ProjectPage = () => {
     setRefreshPending(false);
   }, [refreshPending, projectId, loadDashboard, location.pathname, location.search, navigate]);
 
+  const recommendationActionsDisabled = !isAuthenticated || authExpired;
   const summary = data?.summary;
 
   const handleStartRun = () => {
@@ -185,7 +186,7 @@ export const ProjectPage = () => {
   };
 
   const handleRecommendationClick = (scenario: CalcScenario, nextValue: boolean) => {
-    if (!isAuthenticated) return;
+    if (recommendationActionsDisabled) return;
     setScenarioActionError(null);
     setScenarioActionMessage(null);
     setRecommendModal({
@@ -235,7 +236,7 @@ export const ProjectPage = () => {
   };
 
   const handleSaveRecommendation = async () => {
-    if (!recommendModal || !isAuthenticated) return;
+    if (!recommendModal || recommendationActionsDisabled) return;
     setRecommendationSaving(true);
     setScenarioActionError(null);
     setScenarioActionMessage(null);
@@ -382,24 +383,9 @@ export const ProjectPage = () => {
                 <h2>Сценарии</h2>
                 <p className="section-subtitle">Всего: {summary?.scenarios_total ?? scenarios.length ?? 0}</p>
               </div>
-              {authExpired && (
-                <div
-                  className="alert error"
-                  style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between" }}
-                >
-                  <span>Сессия истекла. Войдите снова.</span>
-                  <button className="btn" type="button" onClick={() => navigate("/login")}>
-                    Войти
-                  </button>
-                </div>
-              )}
+              {authExpired && <div className="alert error">Сессия истекла. Войдите снова.</div>}
               {scenarioActionError && <div className="alert error">{scenarioActionError}</div>}
               {scenarioActionMessage && <div className="alert success">{scenarioActionMessage}</div>}
-              {!isAuthenticated && (
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  Требуется вход, чтобы менять рекомендацию.
-                </div>
-              )}
               {scenarios.length ? (
                 <table className="table">
                   <thead>
@@ -454,8 +440,7 @@ export const ProjectPage = () => {
                                 className="btn secondary"
                                 type="button"
                                 onClick={() => handleEditRecommendationNote(scenario)}
-                                disabled={recommendationSaving || !isAuthenticated}
-                                title={!isAuthenticated ? "Требуется вход" : undefined}
+                                disabled={recommendationSaving || recommendationActionsDisabled}
                               >
                                 Комментарий
                               </button>
@@ -464,8 +449,7 @@ export const ProjectPage = () => {
                                   className="btn secondary"
                                   type="button"
                                   onClick={() => handleRecommendationClick(scenario, true)}
-                                  disabled={recommendationSaving || !isAuthenticated}
-                                  title={!isAuthenticated ? "Требуется вход" : undefined}
+                                  disabled={recommendationSaving || recommendationActionsDisabled}
                                 >
                                   Рекомендовать
                                 </button>
@@ -475,8 +459,7 @@ export const ProjectPage = () => {
                                   className="btn secondary"
                                   type="button"
                                   onClick={() => handleRecommendationClick(scenario, false)}
-                                  disabled={recommendationSaving || !isAuthenticated}
-                                  title={!isAuthenticated ? "Требуется вход" : undefined}
+                                  disabled={recommendationSaving || recommendationActionsDisabled}
                                 >
                                   Снять рекомендацию
                                 </button>

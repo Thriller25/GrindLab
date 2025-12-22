@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, setToken } from "../api/client";
+import { api } from "../api/client";
+import { setAccessToken } from "../auth/authProvider";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ export const LoginPage = () => {
       });
       const { access_token } = response.data;
       if (access_token) {
-        setToken(access_token);
+        setAccessToken(access_token);
         navigate("/", { replace: true });
       } else {
         setError("Не удалось получить токен");
