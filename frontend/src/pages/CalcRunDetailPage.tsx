@@ -1,9 +1,19 @@
 import axios from "axios";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CalcRunRead, fetchCalcRun, fetchGrindMvpRun, GrindMvpRunDetail } from "../api/client";
+import {
+  CalcRunRead,
+  ProjectComment,
+  createProjectComment,
+  fetchCalcRun,
+  fetchCalcRunComments,
+  fetchGrindMvpRun,
+  GrindMvpRunDetail,
+  isAuthExpiredError,
+} from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
 import { DEFAULT_KPI_META, ResolvedKpiMeta, resolveKpiMeta } from "../features/kpi/kpiRegistry";
+import { hasAuth } from "../auth/authProvider";
 
 type MetricConfig = ResolvedKpiMeta;
 
@@ -55,6 +65,25 @@ export const CalcRunDetailPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [kpiError, setKpiError] = useState<string | null>(null);
+  const [runComments, setRunComments] = useState<ProjectComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [commentSuccess, setCommentSuccess] = useState<string | null>(null);
+  const [commentModalOpen, setCommentModalOpen] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [commentSaving, setCommentSaving] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => hasAuth());
+  const [authExpired, setAuthExpired] = useState(false);
+
+  const loadComments = useCallback(() => {
+    if (!runId) return;
+    setCommentsLoading(true);
+    setCommentError(null);
+    fetchCalcRunComments(runId, 20)
+      .then((resp) => setRunComments(resp.items ?? []))
+      .catch(() => setCommentError("Не удалось загрузить комментарии. Попробуйте ещё раз."))
+      .finally(() => setCommentsLoading(false));
+  }, [runId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +91,10 @@ export const CalcRunDetailPage = () => {
       setError("Не указан идентификатор запуска.");
       setMeta(null);
       setRunDetail(null);
+      setRunComments([]);
+      setCommentSuccess(null);
+      setCommentError(null);
+      setRunComments([]);
       return;
     }
 
@@ -92,6 +125,9 @@ export const CalcRunDetailPage = () => {
         }
       }
 
+      if (metaResult.status === "fulfilled" || detailResult.status === "fulfilled") {
+        loadComments();
+      }
       setLoading(false);
     };
 
@@ -100,7 +136,22 @@ export const CalcRunDetailPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [runId, loadComments]);
+
+  useEffect(() => {
+    const syncAuth = () => {
+      const hasToken = hasAuth();
+      setIsAuthenticated(hasToken);
+      if (hasToken) setAuthExpired(false);
+    };
+    syncAuth();
+    window.addEventListener("storage", syncAuth);
+    window.addEventListener("focus", syncAuth);
+    return () => {
+      window.removeEventListener("storage", syncAuth);
+      window.removeEventListener("focus", syncAuth);
+    };
+  }, []);
 
   const kpiData = useMemo(() => (runDetail?.result?.kpi ?? {}) as Record<string, unknown>, [runDetail]);
 
@@ -151,9 +202,63 @@ export const CalcRunDetailPage = () => {
   const createdAt = meta?.created_at ?? runDetail?.created_at ?? null;
   const updatedAt = meta?.updated_at ?? meta?.created_at ?? runDetail?.created_at ?? null;
 
+  const canComment = Boolean(projectId);
+  const commentButtonDisabled = !canComment || !isAuthenticated || authExpired || commentSaving;
+  const commentButtonTitle = !isAuthenticated
+    ? "Требуется вход"
+    : authExpired
+      ? "Сессия истекла. Войдите снова."
+      : undefined;
   const handleOpenProject = () => {
     if (!projectId) return;
     navigate(`/projects/${projectId}`);
+  };
+
+  const openCommentModal = () => {
+    setCommentError(null);
+    setCommentSuccess(null);
+    setCommentModalOpen(true);
+    setCommentText("");
+  };
+
+  const handleSaveComment = async () => {
+    if (!projectId || !runId) {
+      setCommentError("Не удалось определить проект и запуск для комментария.");
+      return;
+    }
+    const trimmed = commentText.trim();
+    if (!trimmed) return;
+    setCommentSaving(true);
+    setCommentError(null);
+    try {
+      await createProjectComment(projectId, { calc_run_id: runId, text: trimmed });
+      setCommentModalOpen(false);
+      setCommentText("");
+      setCommentSuccess("Комментарий сохранён.");
+      loadComments();
+    } catch (err) {
+      if (isAuthExpiredError(err)) {
+        setAuthExpired(true);
+        setIsAuthenticated(false);
+        setCommentModalOpen(false);
+        setCommentText("");
+        setCommentSuccess(null);
+        setCommentError("Сессия истекла. Войдите снова.");
+      } else if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        if (status === 403) {
+          setCommentError("Недостаточно прав для изменения комментариев.");
+        } else if (status === 400) {
+          setCommentError("Комментарии недоступны для этого запуска.");
+        } else {
+          setCommentError("Не удалось сохранить комментарий. Попробуйте ещё раз.");
+        }
+      } else {
+        setCommentError("Не удалось сохранить комментарий. Попробуйте ещё раз.");
+      }
+    } finally {
+      setCommentSaving(false);
+    }
   };
 
   const renderMetaGrid = () => (
@@ -243,10 +348,20 @@ export const CalcRunDetailPage = () => {
                 К проекту
               </button>
             )}
+            <button
+              className="btn secondary"
+              type="button"
+              onClick={openCommentModal}
+              disabled={commentButtonDisabled}
+              title={commentButtonTitle}
+            >
+              Добавить комментарий
+            </button>
             <BackToHomeButton />
           </div>
         </header>
 
+        {authExpired && <div className="alert error">Сессия истекла. Войдите снова.</div>}
         {loading && <div className="muted">Загружаем данные запуска...</div>}
         {error && <div className="general-error">{error}</div>}
 
@@ -269,9 +384,62 @@ export const CalcRunDetailPage = () => {
               {kpiError && <div className="alert error">{kpiError}</div>}
               {renderKpiTable()}
             </section>
+            <section className="section">
+              <div className="section-heading">
+                <h2>Комментарии к запуску</h2>
+                <p className="section-subtitle">Всего: {runComments.length}</p>
+              </div>
+              {commentError && <div className="alert error">{commentError}</div>}
+              {commentSuccess && <div className="alert success">{commentSuccess}</div>}
+              {commentsLoading ? (
+                <div className="muted">Загружаем комментарии...</div>
+              ) : runComments.length ? (
+                <ul className="comments-list">
+                  {runComments.map((comment) => (
+                    <li key={comment.id} className="comment-item">
+                      <div className="comment-text">{comment.text}</div>
+                      <div className="muted">
+                        {(comment.author && comment.author.trim()) || "anonymous"} · {formatDateTime(comment.created_at)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="empty-state">Комментариев пока нет.</div>
+              )}
+            </section>
+
           </>
         )}
       </div>
+            {commentModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Комментарий к запуску</h3>
+            <label>
+              Текст комментария
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Введите комментарий"
+              />
+            </label>
+            <div className="actions modal-actions">
+              <button className="btn secondary" type="button" onClick={() => setCommentModalOpen(false)} disabled={commentSaving}>
+                Отмена
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={handleSaveComment}
+                disabled={commentSaving || !commentText.trim() || !isAuthenticated || authExpired}
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
