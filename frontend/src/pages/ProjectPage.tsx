@@ -179,6 +179,13 @@ export const ProjectPage = () => {
     navigate(`/calc-scenarios?projectId=${projectId}`);
   };
 
+  const handleOpenRunDetails = useCallback(
+    (runId: string) => {
+      navigate(`/calc-runs/${runId}`);
+    },
+    [navigate],
+  );
+
   const handleRenameClick = (scenario: CalcScenario) => {
     setScenarioActionError(null);
     setScenarioActionMessage(null);
