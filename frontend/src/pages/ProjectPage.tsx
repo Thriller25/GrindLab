@@ -50,6 +50,30 @@ export const ProjectPage = () => {
   const [authExpired, setAuthExpired] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(() => hasAuth());
 
+  const scrollToScenario = useCallback(
+    (scenarioId: string) => {
+      setHighlightedScenarioId(scenarioId);
+      const tryScroll = (attemptsLeft: number) => {
+        const row = scenarioRowRefs.current[scenarioId];
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else if (attemptsLeft > 0) {
+          window.requestAnimationFrame(() => tryScroll(attemptsLeft - 1));
+          return;
+        }
+        if (highlightTimeoutRef.current) {
+          window.clearTimeout(highlightTimeoutRef.current);
+        }
+        highlightTimeoutRef.current = window.setTimeout(() => {
+          setHighlightedScenarioId((current) => (current === scenarioId ? null : current));
+          highlightTimeoutRef.current = null;
+        }, 4000);
+      };
+      tryScroll(3);
+    },
+    [],
+  );
+
   const handleAuthExpired = () => {
     setAuthExpired(true);
     setIsAuthenticated(false);
@@ -167,6 +191,7 @@ export const ProjectPage = () => {
 
   useEffect(() => {
     if (!pendingScenarioId) return;
+    if (!scenarios.length) return;
     const row = scenarioRowRefs.current[pendingScenarioId];
     if (row) {
       scrollToScenario(pendingScenarioId);
@@ -241,24 +266,6 @@ export const ProjectPage = () => {
       navigate(`/calc-runs/${runId}`);
     },
     [navigate],
-  );
-
-  const scrollToScenario = useCallback(
-    (scenarioId: string) => {
-      setHighlightedScenarioId(scenarioId);
-      const row = scenarioRowRefs.current[scenarioId];
-      if (row) {
-        row.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-      if (highlightTimeoutRef.current) {
-        window.clearTimeout(highlightTimeoutRef.current);
-      }
-      highlightTimeoutRef.current = window.setTimeout(() => {
-        setHighlightedScenarioId((current) => (current === scenarioId ? null : current));
-        highlightTimeoutRef.current = null;
-      }, 4000);
-    },
-    [],
   );
 
   const handleOpenCommentTarget = (comment: ProjectComment) => {
