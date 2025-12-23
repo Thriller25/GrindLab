@@ -131,7 +131,7 @@ User (пользователь)
 | 1.3 | Enum для статусов (CalcRunStatus, etc) | 🟡 Medium | ✅ Done | AI |
 | 1.4 | Pre-commit hooks (black, flake8) | 🟡 Medium | ✅ Done | AI |
 | 1.5 | .env.example файл | 🟢 Low | ✅ Done | AI |
-| 1.6 | Улучшить error messages | 🟡 Medium | 📋 TODO | - |
+| 1.6 | Улучшить error messages | 🟡 Medium | ✅ Done | AI |
 | 1.7 | **Исправить тесты после пагинации** | 🔴 High | ✅ Done | AI |
 | 1.8 | **Миграция Pydantic V2 (orm_mode → from_attributes)** | 🟡 Medium | ✅ Done | AI |
 | 1.9 | **Обновить deprecated APIs (FastAPI lifespan)** | 🟢 Low | ✅ Done | AI |
