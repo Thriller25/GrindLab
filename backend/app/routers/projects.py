@@ -358,12 +358,19 @@ def get_my_projects(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> ProjectListResponse:
-    query = db.query(models.Project)
+    base_query = db.query(models.Project)
     if current_user is None:
-        query = query.filter(models.Project.owner_user_id.is_(None))
+        base_query = base_query.filter(models.Project.owner_user_id.is_(None))
     else:
-        query = query.filter(models.Project.owner_user_id == current_user.id)
-    total = query.count()
+        base_query = base_query.filter(models.Project.owner_user_id == current_user.id)
+
+    total = base_query.count()
+
+    # Apply joinedload for potential future use
+    query = base_query.options(
+        joinedload(models.Project.owner),
+        joinedload(models.Project.plant),
+    )
     items = query.order_by(models.Project.created_at.desc()).offset(offset).limit(limit).all()
     dto_items = [ProjectRead.model_validate(item, from_attributes=True) for item in items]
     return ProjectListResponse(items=dto_items, total=total)
@@ -636,8 +643,12 @@ def list_project_members(
     project = _ensure_project_exists_and_get(db, project_id)
     _check_project_read_access(db, project, current_user)
 
+    # Use joinedload to avoid N+1 when accessing m.user
     memberships = (
-        db.query(models.ProjectMember).filter(models.ProjectMember.project_id == project.id).all()
+        db.query(models.ProjectMember)
+        .options(joinedload(models.ProjectMember.user))
+        .filter(models.ProjectMember.project_id == project.id)
+        .all()
     )
     result: list[ProjectMemberRead] = []
     for m in memberships:
@@ -740,9 +751,10 @@ def get_project_dashboard(
     if current_user is None and project.owner_user_id is not None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Login required")
 
-    # Get project flowsheet version links
+    # Get project flowsheet version links with joinedload to avoid N+1
     links = (
         db.query(models.ProjectFlowsheetVersion)
+        .options(joinedload(models.ProjectFlowsheetVersion.flowsheet_version))
         .filter(models.ProjectFlowsheetVersion.project_id == project.id)
         .all()
     )
