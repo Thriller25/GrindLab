@@ -1,0 +1,50 @@
+# Dependabot configuration
+# Automatically creates PRs for dependency updates
+
+version: 2
+
+updates:
+  # Python dependencies
+- package-ecosystem: pip
+  directory: /backend
+  schedule:
+    interval: weekly
+    day: monday
+  open-pull-requests-limit: 5
+  labels:
+  - dependencies
+  - python
+  groups:
+    python-minor:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+
+  # JavaScript/Node dependencies
+- package-ecosystem: npm
+  directory: /frontend
+  schedule:
+    interval: weekly
+    day: monday
+  open-pull-requests-limit: 5
+  labels:
+  - dependencies
+  - javascript
+  groups:
+    npm-minor:
+      patterns:
+      - '*'
+      update-types:
+      - minor
+      - patch
+
+  # GitHub Actions
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
+  labels:
+  - dependencies
+  - ci
