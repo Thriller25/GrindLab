@@ -132,9 +132,9 @@ User (пользователь)
 | 1.4 | Pre-commit hooks (black, flake8) | 🟡 Medium | ✅ Done | AI |
 | 1.5 | .env.example файл | 🟢 Low | ✅ Done | AI |
 | 1.6 | Улучшить error messages | 🟡 Medium | 📋 TODO | - |
-| 1.7 | **Исправить тесты после пагинации** | 🔴 High | 📋 TODO | - |
-| 1.8 | **Миграция Pydantic V2 (orm_mode → from_attributes)** | 🟡 Medium | 📋 TODO | - |
-| 1.9 | **Обновить deprecated APIs (FastAPI lifespan)** | 🟢 Low | 📋 TODO | - |
+| 1.7 | **Исправить тесты после пагинации** | 🔴 High | ✅ Done | AI |
+| 1.8 | **Миграция Pydantic V2 (orm_mode → from_attributes)** | 🟡 Medium | ✅ Done | AI |
+| 1.9 | **Обновить deprecated APIs (FastAPI lifespan)** | 🟢 Low | ✅ Done | AI |
 
 ### Фаза 2: Production Readiness
 **Срок:** Январь 2026
@@ -165,13 +165,13 @@ User (пользователь)
 
 ### 🔴 Критический (нужно исправить СЕЙЧАС)
 
-| # | Проблема | Файл | Решение | Приоритет |
-|---|----------|------|---------|-----------|
-| TD-1 | **15 тестов падают** — API изменилось (пагинация), но тесты не обновлены | `tests/*.py` | Обновить тесты для работы с `PaginatedResponse.items` | 🔴 CRITICAL |
-| TD-2 | **Pydantic V2 deprecation warnings** — `orm_mode` устарел | `schemas/*.py` | Заменить `class Config: orm_mode=True` на `model_config = ConfigDict(from_attributes=True)` | 🟡 HIGH |
-| TD-3 | **FastAPI deprecated `on_event`** | `main.py` | Использовать `lifespan` context manager | 🟢 LOW |
-| TD-4 | **SQLAlchemy deprecated `Query.get()`** | `routers/plants.py` и др. | Использовать `db.get(Model, id)` вместо `query.get()` | 🟡 MEDIUM |
-| TD-5 | **Pydantic deprecated `.dict()`** | `routers/*.py` | Заменить на `.model_dump()` | 🟡 MEDIUM |
+| # | Проблема | Файл | Решение | Статус |
+|---|----------|------|---------|--------|
+| TD-1 | ~~15 тестов падают~~ | `tests/*.py` | Rate limiter reset + тесты обновлены | ✅ Done |
+| TD-2 | ~~Pydantic V2 deprecation warnings~~ | `schemas/*.py` | `model_config = ConfigDict(from_attributes=True)` | ✅ Done |
+| TD-3 | ~~FastAPI deprecated `on_event`~~ | `main.py` | Migrated to `lifespan` context manager | ✅ Done |
+| TD-4 | ~~SQLAlchemy deprecated `Query.get()`~~ | `routers/*.py` | Replaced with `db.get(Model, id)` | ✅ Done |
+| TD-5 | ~~Pydantic deprecated `.dict()`~~ | `routers/*.py` | Replaced with `.model_dump()` | ✅ Done |
 
 ### 🟡 Средний приоритет
 
