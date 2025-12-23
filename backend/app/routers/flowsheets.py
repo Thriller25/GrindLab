@@ -24,7 +24,7 @@ def list_flowsheets(skip: int = 0, limit: int = 50, db: Session = Depends(get_db
 
 @router.get("/{flowsheet_id}", response_model=FlowsheetRead)
 def get_flowsheet(flowsheet_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.Flowsheet).get(flowsheet_id)
+    obj = db.get(models.Flowsheet, flowsheet_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet not found")
     return obj
@@ -32,7 +32,7 @@ def get_flowsheet(flowsheet_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=FlowsheetRead, status_code=status.HTTP_201_CREATED)
 def create_flowsheet(payload: FlowsheetCreate, db: Session = Depends(get_db)):
-    obj = models.Flowsheet(**payload.dict())
+    obj = models.Flowsheet(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -43,10 +43,10 @@ def create_flowsheet(payload: FlowsheetCreate, db: Session = Depends(get_db)):
 def update_flowsheet(
     flowsheet_id: uuid.UUID, payload: FlowsheetUpdate, db: Session = Depends(get_db)
 ):
-    obj = db.query(models.Flowsheet).get(flowsheet_id)
+    obj = db.get(models.Flowsheet, flowsheet_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet not found")
-    for field, value in payload.dict(exclude_unset=True).items():
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)
@@ -55,7 +55,7 @@ def update_flowsheet(
 
 @router.delete("/{flowsheet_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_flowsheet(flowsheet_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.Flowsheet).get(flowsheet_id)
+    obj = db.get(models.Flowsheet, flowsheet_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet not found")
     obj.status = "ARCHIVED"

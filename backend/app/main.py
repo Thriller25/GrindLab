@@ -1,5 +1,6 @@
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from app.core.rate_limit import limiter
 from app.core.settings import settings
@@ -21,7 +22,34 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-app = FastAPI(title="GrindLab Backend", version="0.1.0")
+logger = logging.getLogger("uvicorn.error")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for FastAPI application.
+    Handles startup and shutdown events.
+    """
+    # Startup
+    import app.models  # noqa: F401 - ensure models are imported for metadata
+
+    logger.info("DB url (settings.db_url): %s", settings.db_url)
+    logger.info("DB engine url: %s", engine.url)
+    db_path = get_db_path()
+    if db_path:
+        logger.info("DB sqlite file path: %s", db_path)
+        logger.info("[GrindLab] Using sqlite DB at: %s", db_path)
+    else:
+        logger.info("[GrindLab] Using database URL: %s", engine.url)
+    Base.metadata.create_all(bind=engine)
+
+    yield  # Application is running
+
+    # Shutdown (cleanup if needed)
+
+
+app = FastAPI(title="GrindLab Backend", version="0.1.0", lifespan=lifespan)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -66,24 +94,6 @@ async def rate_limit_handler(request, exc):
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    """
-    Dev-only DB initialization: create all tables in SQLite if they do not exist yet.
-    """
-    import app.models  # noqa: F401 - ensure models are imported for metadata
-
-    logger.info("DB url (settings.db_url): %s", settings.db_url)
-    logger.info("DB engine url: %s", engine.url)
-    db_path = get_db_path()
-    if db_path:
-        logger.info("DB sqlite file path: %s", db_path)
-        logger.info("[GrindLab] Using sqlite DB at: %s", db_path)
-    else:
-        logger.info("[GrindLab] Using database URL: %s", engine.url)
-    Base.metadata.create_all(bind=engine)
 
 
 app.include_router(api_router, prefix="/api")

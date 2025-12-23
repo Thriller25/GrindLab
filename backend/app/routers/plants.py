@@ -25,7 +25,7 @@ def list_plants(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
 
 @router.get("/{plant_id}", response_model=PlantRead)
 def get_plant(plant_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.Plant).get(plant_id)
+    obj = db.get(models.Plant, plant_id)
     if not obj:
         raise_not_found("Plant", plant_id)
     return obj
@@ -33,7 +33,7 @@ def get_plant(plant_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=PlantRead, status_code=status.HTTP_201_CREATED)
 def create_plant(payload: PlantCreate, db: Session = Depends(get_db)):
-    obj = models.Plant(**payload.dict())
+    obj = models.Plant(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -42,10 +42,10 @@ def create_plant(payload: PlantCreate, db: Session = Depends(get_db)):
 
 @router.put("/{plant_id}", response_model=PlantRead)
 def update_plant(plant_id: uuid.UUID, payload: PlantUpdate, db: Session = Depends(get_db)):
-    obj = db.query(models.Plant).get(plant_id)
+    obj = db.get(models.Plant, plant_id)
     if not obj:
         raise_not_found("Plant", plant_id)
-    for field, value in payload.dict(exclude_unset=True).items():
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)
@@ -54,7 +54,7 @@ def update_plant(plant_id: uuid.UUID, payload: PlantUpdate, db: Session = Depend
 
 @router.delete("/{plant_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_plant(plant_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.Plant).get(plant_id)
+    obj = db.get(models.Plant, plant_id)
     if not obj:
         raise_not_found("Plant", plant_id)
     obj.is_active = False

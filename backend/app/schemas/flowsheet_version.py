@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class FlowsheetVersionBase(BaseModel):
@@ -26,11 +26,10 @@ class FlowsheetVersionUpdate(BaseModel):
 
 
 class FlowsheetVersionRead(FlowsheetVersionBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     created_at: datetime
-
-    class Config:
-        orm_mode = True
 
 
 class FlowsheetVersionCloneRequest(BaseModel):

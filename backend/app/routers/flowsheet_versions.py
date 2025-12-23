@@ -50,7 +50,7 @@ def list_flowsheet_versions(skip: int = 0, limit: int = 50, db: Session = Depend
 
 @router.get("/{version_id}", response_model=FlowsheetVersionRead)
 def get_flowsheet_version(version_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.FlowsheetVersion).get(version_id)
+    obj = db.get(models.FlowsheetVersion, version_id)
     if not obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found"
@@ -60,7 +60,7 @@ def get_flowsheet_version(version_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=FlowsheetVersionRead, status_code=status.HTTP_201_CREATED)
 def create_flowsheet_version(payload: FlowsheetVersionCreate, db: Session = Depends(get_db)):
-    obj = models.FlowsheetVersion(**payload.dict())
+    obj = models.FlowsheetVersion(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -71,12 +71,12 @@ def create_flowsheet_version(payload: FlowsheetVersionCreate, db: Session = Depe
 def update_flowsheet_version(
     version_id: uuid.UUID, payload: FlowsheetVersionUpdate, db: Session = Depends(get_db)
 ):
-    obj = db.query(models.FlowsheetVersion).get(version_id)
+    obj = db.get(models.FlowsheetVersion, version_id)
     if not obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found"
         )
-    for field, value in payload.dict(exclude_unset=True).items():
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)
@@ -85,7 +85,7 @@ def update_flowsheet_version(
 
 @router.delete("/{version_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_flowsheet_version(version_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.FlowsheetVersion).get(version_id)
+    obj = db.get(models.FlowsheetVersion, version_id)
     if not obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found"
