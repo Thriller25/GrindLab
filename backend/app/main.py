@@ -1,7 +1,8 @@
-import logging
 import os
 from contextlib import asynccontextmanager
 
+from app.core.logging import configure_logging, get_logger
+from app.core.middleware import RequestLoggingMiddleware
 from app.core.rate_limit import limiter
 from app.core.settings import settings
 from app.db import Base, engine, get_db, get_db_path
@@ -23,7 +24,9 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
-logger = logging.getLogger("uvicorn.error")
+# Configure structured logging at module load
+configure_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -35,24 +38,22 @@ async def lifespan(app: FastAPI):
     # Startup
     import app.models  # noqa: F401 - ensure models are imported for metadata
 
-    logger.info("DB url (settings.db_url): %s", settings.db_url)
-    logger.info("DB engine url: %s", engine.url)
+    logger.info("application_starting", db_url=str(settings.db_url))
     db_path = get_db_path()
     if db_path:
-        logger.info("DB sqlite file path: %s", db_path)
-        logger.info("[GrindLab] Using sqlite DB at: %s", db_path)
+        logger.info("using_sqlite_database", path=db_path)
     else:
-        logger.info("[GrindLab] Using database URL: %s", engine.url)
+        logger.info("using_database", url=str(engine.url))
     Base.metadata.create_all(bind=engine)
+    logger.info("database_tables_created")
 
     yield  # Application is running
 
-    # Shutdown (cleanup if needed)
+    # Shutdown
+    logger.info("application_shutdown")
 
 
 app = FastAPI(title="GrindLab Backend", version="0.1.0", lifespan=lifespan)
-
-logger = logging.getLogger("uvicorn.error")
 
 # ============================================================================
 # CORS Middleware Configuration
@@ -81,6 +82,11 @@ app.add_middleware(
 # ============================================================================
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
+
+# ============================================================================
+# Request Logging Middleware (must be added after other middleware)
+# ============================================================================
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.exception_handler(RateLimitExceeded)
