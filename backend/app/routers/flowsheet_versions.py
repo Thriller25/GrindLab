@@ -30,6 +30,7 @@ from app.schemas.flowsheet_kpi import (
 )
 from app.services.calc_service import get_flowsheet_version_or_404
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 router = APIRouter()
@@ -190,16 +191,39 @@ def get_flowsheet_version_overview(
         .all()
     )
 
-    scenario_items: list[ScenarioWithLatestRun] = []
-    for scenario in scenarios:
-        run_query = db.query(models.CalcRun).filter(models.CalcRun.scenario_id == scenario.id)
-        if status is not None:
-            run_query = run_query.filter(models.CalcRun.status == status)
+    # Build a map of scenario_id -> latest_run in ONE query (avoid N+1)
+    scenario_ids = [s.id for s in scenarios]
+    latest_runs_map: dict[uuid.UUID, models.CalcRun] = {}
 
-        latest_run = (
-            run_query.order_by(models.CalcRun.started_at.desc().nullslast()).limit(1).first()
+    if scenario_ids:
+        # Subquery to get max started_at per scenario
+        run_base_query = db.query(
+            models.CalcRun.scenario_id,
+            func.max(models.CalcRun.started_at).label("max_started_at"),
+        ).filter(models.CalcRun.scenario_id.in_(scenario_ids))
+
+        if status is not None:
+            run_base_query = run_base_query.filter(models.CalcRun.status == status)
+
+        latest_subq = run_base_query.group_by(models.CalcRun.scenario_id).subquery()
+
+        # Join to get actual runs
+        latest_runs = (
+            db.query(models.CalcRun)
+            .join(
+                latest_subq,
+                (models.CalcRun.scenario_id == latest_subq.c.scenario_id)
+                & (models.CalcRun.started_at == latest_subq.c.max_started_at),
+            )
+            .all()
         )
 
+        for run in latest_runs:
+            latest_runs_map[run.scenario_id] = run
+
+    scenario_items: list[ScenarioWithLatestRun] = []
+    for scenario in scenarios:
+        latest_run = latest_runs_map.get(scenario.id)
         scenario_items.append(
             ScenarioWithLatestRun(
                 scenario=CalcScenarioListItem.model_validate(scenario, from_attributes=True),
