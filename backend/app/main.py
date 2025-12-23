@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.core.rate_limit import limiter
 from app.core.settings import settings
-from app.db import Base, engine, get_db_path
+from app.db import Base, engine, get_db, get_db_path
 from app.routers import (
     api_router,
     auth,
@@ -17,10 +17,11 @@ from app.routers import (
     me,
     projects,
 )
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -93,7 +94,22 @@ async def rate_limit_handler(request, exc):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    """Basic health check endpoint."""
+    return {"status": "ok", "service": "grindlab-backend"}
+
+
+@app.get("/health/ready")
+def readiness_check(db=Depends(get_db)):
+    """
+    Readiness check - verifies database connectivity.
+    Used by container orchestration for readiness probes.
+    """
+    try:
+        # Simple query to verify DB connection
+        db.execute(text("SELECT 1"))
+        return {"status": "ready", "database": "connected"}
+    except Exception as e:
+        return {"status": "not_ready", "database": "disconnected", "error": str(e)}
 
 
 app.include_router(api_router, prefix="/api")
