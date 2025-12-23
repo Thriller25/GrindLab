@@ -27,7 +27,7 @@
 
 ## 📁 Git-репозиторий
 
-**GitHub:** https://github.com/berlinn4er-cmyk/GrindLab.git
+**GitHub:** https://github.com/Thriller25/GrindLab.git
 
 ### Ветки
 
