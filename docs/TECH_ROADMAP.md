@@ -146,7 +146,7 @@ User (пользователь)
 | 2.3 | PostgreSQL production setup | 🔴 High | ✅ Done |
 | 2.4 | Structured logging (JSON) | 🟡 Medium | ✅ Done |
 | 2.5 | Health checks / monitoring | 🟡 Medium | ✅ Done |
-| 2.6 | E2E tests (Playwright) | 🟡 Medium | 📋 TODO |
+| 2.6 | E2E tests (Playwright) | 🟡 Medium | ✅ Done |
 
 ### Фаза 3: Feature Expansion
 **Срок:** Февраль 2026+
