@@ -1,4 +1,6 @@
 import uuid
+from datetime import datetime, timezone
+from typing import Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
@@ -6,150 +8,167 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import get_db
-from app.schemas import CommentBase, CommentCreate, CommentListResponse, CommentRead, UserCommentCreate
-from app.routers.auth import get_current_user
-from app.models.user import User
+from app.routers.auth import get_current_user_optional
+from app.schemas import CommentCreate, CommentListResponse, CommentRead
 
-router = APIRouter(prefix="/api/comments", tags=["comments"])
-me_router = APIRouter(prefix="/api", tags=["comments"])
+router = APIRouter(prefix="/api", tags=["comments"])
 
-
-def _validate_entity(db: Session, entity_type: str, entity_id: uuid.UUID) -> None:
-    if entity_type == "calc_run":
-        if db.get(models.CalcRun, entity_id) is None:
-            raise HTTPException(status_code=404, detail=f"CalcRun {entity_id} not found")
-    elif entity_type == "scenario":
-        if db.get(models.CalcScenario, entity_id) is None:
-            raise HTTPException(status_code=404, detail=f"CalcScenario {entity_id} not found")
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported entity_type")
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 100
 
 
-def _create_comment(
-    db: Session, entity_type: str, entity_id: uuid.UUID, payload: CommentBase
-) -> models.Comment:
-    _validate_entity(db, entity_type, entity_id)
-    comment = models.Comment(
-        entity_type=entity_type,
-        entity_id=entity_id,
-        author=payload.author,
-        text=payload.text,
+def _get_project_or_404(db: Session, project_id: str | int) -> models.Project:
+    try:
+        project_pk = int(project_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    project = db.get(models.Project, project_pk)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
+
+
+def _check_project_read_access(db: Session, project: models.Project, user: models.User | None) -> None:
+    if project.owner_user_id is None:
+        return
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    if project.owner_user_id == user.id:
+        return
+    membership = (
+        db.query(models.ProjectMember)
+        .filter(models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id)
+        .first()
     )
-    db.add(comment)
-    db.commit()
-    db.refresh(comment)
-    return comment
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
 
-@router.post("/", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
-def create_comment(payload: CommentCreate, db: Session = Depends(get_db)) -> CommentRead:
-    comment = _create_comment(db, payload.entity_type, payload.entity_id, payload)
-    return CommentRead.model_validate(comment, from_attributes=True)
+def _check_project_write_access(db: Session, project: models.Project, user: models.User | None) -> None:
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    _check_project_read_access(db, project, user)
 
 
-@router.post("/calc-runs/{run_id}", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
-def create_comment_for_run(run_id: uuid.UUID, payload: CommentBase, db: Session = Depends(get_db)) -> CommentRead:
-    comment = _create_comment(db, "calc_run", run_id, payload)
-    return CommentRead.model_validate(comment, from_attributes=True)
+def _load_target(
+    db: Session,
+    project: models.Project,
+    scenario_id: uuid.UUID | None,
+    calc_run_id: uuid.UUID | None,
+) -> Tuple[models.CalcScenario | None, models.CalcRun | None]:
+    if scenario_id and calc_run_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide only one target id")
+    if not scenario_id and not calc_run_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scenario_id or calc_run_id is required")
+
+    scenario = None
+    calc_run = None
+    if scenario_id:
+        scenario = db.get(models.CalcScenario, scenario_id)
+        if scenario is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CalcScenario not found")
+        if scenario.project_id != project.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Scenario does not belong to project")
+    if calc_run_id:
+        calc_run = db.get(models.CalcRun, calc_run_id)
+        if calc_run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CalcRun not found")
+        if calc_run.project_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Calc run is not linked to a project")
+        if calc_run.project_id != project.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Calc run does not belong to project")
+    return scenario, calc_run
 
 
-@router.post("/calc-scenarios/{scenario_id}", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
-def create_comment_for_scenario(
-    scenario_id: uuid.UUID, payload: CommentBase, db: Session = Depends(get_db)
-) -> CommentRead:
-    comment = _create_comment(db, "scenario", scenario_id, payload)
-    return CommentRead.model_validate(comment, from_attributes=True)
-
-
-@router.post("/calc-runs/{run_id}/comments/me", response_model=CommentRead)
-def create_comment_for_run_me(
-    run_id: uuid.UUID,
-    payload: UserCommentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CommentRead:
-    comment = _create_comment(
-        db,
-        "calc_run",
-        run_id,
-        CommentBase(author=current_user.email, text=payload.text),
-    )
-    return CommentRead.model_validate(comment, from_attributes=True)
-
-
-@router.post("/calc-scenarios/{scenario_id}/comments/me", response_model=CommentRead)
-def create_comment_for_scenario_me(
-    scenario_id: uuid.UUID,
-    payload: UserCommentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CommentRead:
-    comment = _create_comment(
-        db,
-        "scenario",
-        scenario_id,
-        CommentBase(author=current_user.email, text=payload.text),
-    )
-    return CommentRead.model_validate(comment, from_attributes=True)
-
-
-@me_router.post("/calc-runs/{run_id}/comments/me", response_model=CommentRead)
-def create_comment_for_run_me_direct(
-    run_id: uuid.UUID,
-    payload: UserCommentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CommentRead:
-    return create_comment_for_run_me(run_id, payload, db, current_user)
-
-
-@me_router.post("/calc-scenarios/{scenario_id}/comments/me", response_model=CommentRead)
-def create_comment_for_scenario_me_direct(
-    scenario_id: uuid.UUID,
-    payload: UserCommentCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CommentRead:
-    return create_comment_for_scenario_me(scenario_id, payload, db, current_user)
-
-
-@router.get("/by-entity", response_model=CommentListResponse)
-def list_comments_by_entity(
-    entity_type: str = Query(..., description="calc_run or scenario"),
-    entity_id: uuid.UUID = Query(...),
-    limit: int = 50,
-    offset: int = 0,
-    db: Session = Depends(get_db),
+def _list_comments(
+    db: Session,
+    project: models.Project,
+    *,
+    scenario_id: uuid.UUID | None = None,
+    calc_run_id: uuid.UUID | None = None,
+    limit: int,
 ) -> CommentListResponse:
-    _validate_entity(db, entity_type, entity_id)
-    query = db.query(models.Comment).filter(
-        models.Comment.entity_type == entity_type, models.Comment.entity_id == entity_id
+    query = db.query(models.Comment).filter(models.Comment.project_id == project.id)
+    if scenario_id:
+        query = query.filter(models.Comment.scenario_id == scenario_id)
+    if calc_run_id:
+        query = query.filter(models.Comment.calc_run_id == calc_run_id)
+
+    total = query.with_entities(func.count(models.Comment.id)).scalar() or 0
+    comments = (
+        query.order_by(models.Comment.created_at.desc(), models.Comment.id.desc())
+        .limit(limit)
+        .all()
     )
-    total = query.with_entities(func.count()).scalar() or 0
-    comments = query.order_by(models.Comment.created_at.desc()).offset(offset).limit(limit).all()
     items = [CommentRead.model_validate(comment, from_attributes=True) for comment in comments]
     return CommentListResponse(items=items, total=total)
 
 
-@router.get("/calc-runs/{run_id}", response_model=CommentListResponse)
-def list_comments_for_run(
-    run_id: uuid.UUID, limit: int = 50, offset: int = 0, db: Session = Depends(get_db)
+@router.get("/projects/{project_id}/comments", response_model=CommentListResponse)
+def list_project_comments(
+    project_id: str,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> CommentListResponse:
-    return list_comments_by_entity("calc_run", run_id, limit, offset, db)
+    project = _get_project_or_404(db, project_id)
+    _check_project_read_access(db, project, current_user)
+    return _list_comments(db, project, limit=limit)
 
 
-@router.get("/calc-scenarios/{scenario_id}", response_model=CommentListResponse)
-def list_comments_for_scenario(
-    scenario_id: uuid.UUID, limit: int = 50, offset: int = 0, db: Session = Depends(get_db)
-) -> CommentListResponse:
-    return list_comments_by_entity("scenario", scenario_id, limit, offset, db)
+@router.post("/projects/{project_id}/comments", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
+def create_project_comment(
+    project_id: str,
+    payload: CommentCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> CommentRead:
+    project = _get_project_or_404(db, project_id)
+    _check_project_write_access(db, project, current_user)
+    scenario, calc_run = _load_target(db, project, payload.scenario_id, payload.calc_run_id)
 
-
-@router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_comment(comment_id: uuid.UUID, db: Session = Depends(get_db)):
-    comment = db.get(models.Comment, comment_id)
-    if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
-    db.delete(comment)
+    author_value = payload.author or getattr(current_user, "email", None) or "anonymous"
+    comment = models.Comment(
+        project_id=project.id,
+        scenario_id=scenario.id if scenario else None,
+        calc_run_id=calc_run.id if calc_run else None,
+        author=author_value,
+        text=payload.text,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(comment)
     db.commit()
-    return None
+    db.refresh(comment)
+    return CommentRead.model_validate(comment, from_attributes=True)
+
+
+@router.get("/scenarios/{scenario_id}/comments", response_model=CommentListResponse)
+def list_scenario_comments(
+    scenario_id: uuid.UUID,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> CommentListResponse:
+    scenario = db.get(models.CalcScenario, scenario_id)
+    if scenario is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CalcScenario not found")
+    project = _get_project_or_404(db, scenario.project_id)
+    _check_project_read_access(db, project, current_user)
+    return _list_comments(db, project, scenario_id=scenario.id, limit=limit)
+
+
+@router.get("/calc-runs/{run_id}/comments", response_model=CommentListResponse)
+def list_calc_run_comments(
+    run_id: uuid.UUID,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> CommentListResponse:
+    calc_run = db.get(models.CalcRun, run_id)
+    if calc_run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CalcRun not found")
+    if calc_run.project_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Calc run is not linked to a project")
+    project = _get_project_or_404(db, calc_run.project_id)
+    _check_project_read_access(db, project, current_user)
+    return _list_comments(db, project, calc_run_id=calc_run.id, limit=limit)

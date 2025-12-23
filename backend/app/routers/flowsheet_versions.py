@@ -1,16 +1,13 @@
 import uuid
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-
-from app.db import get_db
 from app import models
+from app.db import get_db
 from app.schemas import (
+    CalcComparisonRead,
     CalcRunRead,
     CalcScenarioListItem,
     CalcScenarioRead,
-    CalcComparisonRead,
     CommentRead,
     FlowsheetRead,
     FlowsheetVersionCloneRequest,
@@ -20,33 +17,50 @@ from app.schemas import (
     FlowsheetVersionOverviewResponse,
     FlowsheetVersionRead,
     FlowsheetVersionUpdate,
+    PaginatedResponse,
     PlantRead,
     ScenarioWithLatestRun,
     UnitRead,
 )
-from app.services.calc_service import get_flowsheet_version_or_404
-from app.schemas.flowsheet_kpi import FlowsheetVersionKpiSummaryResponse, KpiAggregate, ScenarioKpiSummary
 from app.schemas.calc_io import CalcResultSummary
+from app.schemas.flowsheet_kpi import (
+    FlowsheetVersionKpiSummaryResponse,
+    KpiAggregate,
+    ScenarioKpiSummary,
+)
+from app.services.calc_service import get_flowsheet_version_or_404
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[FlowsheetVersionRead])
-def list_flowsheet_versions(db: Session = Depends(get_db)):
-    return db.query(models.FlowsheetVersion).all()
+@router.get("/", response_model=PaginatedResponse[FlowsheetVersionRead])
+def list_flowsheet_versions(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    query = db.query(models.FlowsheetVersion)
+    total = query.count()
+    items = query.offset(skip).limit(limit).all()
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.get("/{version_id}", response_model=FlowsheetVersionRead)
 def get_flowsheet_version(version_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.FlowsheetVersion).get(version_id)
+    obj = db.get(models.FlowsheetVersion, version_id)
     if not obj:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found"
+        )
     return obj
 
 
 @router.post("/", response_model=FlowsheetVersionRead, status_code=status.HTTP_201_CREATED)
 def create_flowsheet_version(payload: FlowsheetVersionCreate, db: Session = Depends(get_db)):
-    obj = models.FlowsheetVersion(**payload.dict())
+    obj = models.FlowsheetVersion(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -54,11 +68,15 @@ def create_flowsheet_version(payload: FlowsheetVersionCreate, db: Session = Depe
 
 
 @router.put("/{version_id}", response_model=FlowsheetVersionRead)
-def update_flowsheet_version(version_id: uuid.UUID, payload: FlowsheetVersionUpdate, db: Session = Depends(get_db)):
-    obj = db.query(models.FlowsheetVersion).get(version_id)
+def update_flowsheet_version(
+    version_id: uuid.UUID, payload: FlowsheetVersionUpdate, db: Session = Depends(get_db)
+):
+    obj = db.get(models.FlowsheetVersion, version_id)
     if not obj:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found")
-    for field, value in payload.dict(exclude_unset=True).items():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found"
+        )
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(obj, field, value)
     db.commit()
     db.refresh(obj)
@@ -67,15 +85,21 @@ def update_flowsheet_version(version_id: uuid.UUID, payload: FlowsheetVersionUpd
 
 @router.delete("/{version_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_flowsheet_version(version_id: uuid.UUID, db: Session = Depends(get_db)):
-    obj = db.query(models.FlowsheetVersion).get(version_id)
+    obj = db.get(models.FlowsheetVersion, version_id)
     if not obj:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet version not found"
+        )
     obj.is_active = False
     db.commit()
     return None
 
 
-@router.post("/{version_id}/clone", response_model=FlowsheetVersionCloneResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{version_id}/clone",
+    response_model=FlowsheetVersionCloneResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def clone_flowsheet_version(
     version_id: uuid.UUID,
     payload: FlowsheetVersionCloneRequest,
@@ -145,7 +169,9 @@ def clone_flowsheet_version(
 
     return FlowsheetVersionCloneResponse(
         flowsheet_version=FlowsheetVersionRead.model_validate(cloned_version, from_attributes=True),
-        scenarios=[CalcScenarioRead.model_validate(s, from_attributes=True) for s in cloned_scenarios],
+        scenarios=[
+            CalcScenarioRead.model_validate(s, from_attributes=True) for s in cloned_scenarios
+        ],
     )
 
 
@@ -170,23 +196,33 @@ def get_flowsheet_version_overview(
         if status is not None:
             run_query = run_query.filter(models.CalcRun.status == status)
 
-        latest_run = run_query.order_by(models.CalcRun.started_at.desc().nullslast()).limit(1).first()
+        latest_run = (
+            run_query.order_by(models.CalcRun.started_at.desc().nullslast()).limit(1).first()
+        )
 
         scenario_items.append(
             ScenarioWithLatestRun(
                 scenario=CalcScenarioListItem.model_validate(scenario, from_attributes=True),
-                latest_run=CalcRunRead.model_validate(latest_run, from_attributes=True) if latest_run else None,
+                latest_run=(
+                    CalcRunRead.model_validate(latest_run, from_attributes=True)
+                    if latest_run
+                    else None
+                ),
             )
         )
 
     return FlowsheetVersionOverviewResponse(
-        flowsheet_version=FlowsheetVersionRead.model_validate(flowsheet_version, from_attributes=True),
+        flowsheet_version=FlowsheetVersionRead.model_validate(
+            flowsheet_version, from_attributes=True
+        ),
         scenarios=scenario_items,
     )
 
 
 @router.get("/{version_id}/export", response_model=FlowsheetVersionExportBundle)
-def export_flowsheet_version_bundle(version_id: uuid.UUID, db: Session = Depends(get_db)) -> FlowsheetVersionExportBundle:
+def export_flowsheet_version_bundle(
+    version_id: uuid.UUID, db: Session = Depends(get_db)
+) -> FlowsheetVersionExportBundle:
     flowsheet_version = get_flowsheet_version_or_404(db, version_id)
     flowsheet = db.get(models.Flowsheet, flowsheet_version.flowsheet_id)
     plant = db.get(models.Plant, flowsheet.plant_id) if flowsheet else None
@@ -215,26 +251,32 @@ def export_flowsheet_version_bundle(version_id: uuid.UUID, db: Session = Depends
     )
     scenario_ids = [scenario.id for scenario in scenarios]
     run_ids = [run.id for run in runs]
-    comments = (
-        db.query(models.Comment)
-        .filter(
-            (
-                (models.Comment.entity_type == "scenario") & (models.Comment.entity_id.in_(scenario_ids))
+    comments: list[models.Comment] = []
+    if scenario_ids or run_ids:
+        comment_query = db.query(models.Comment)
+        if scenario_ids and run_ids:
+            comment_query = comment_query.filter(
+                (models.Comment.scenario_id.in_(scenario_ids))
+                | (models.Comment.calc_run_id.in_(run_ids))
             )
-            | ((models.Comment.entity_type == "calc_run") & (models.Comment.entity_id.in_(run_ids)))
-        )
-        .order_by(models.Comment.created_at.desc())
-        .all()
-    )
+        elif scenario_ids:
+            comment_query = comment_query.filter(models.Comment.scenario_id.in_(scenario_ids))
+        else:
+            comment_query = comment_query.filter(models.Comment.calc_run_id.in_(run_ids))
+        comments = comment_query.order_by(models.Comment.created_at.desc()).all()
 
     return FlowsheetVersionExportBundle(
         plant=PlantRead.model_validate(plant, from_attributes=True),
         flowsheet=FlowsheetRead.model_validate(flowsheet, from_attributes=True),
-        flowsheet_version=FlowsheetVersionRead.model_validate(flowsheet_version, from_attributes=True),
+        flowsheet_version=FlowsheetVersionRead.model_validate(
+            flowsheet_version, from_attributes=True
+        ),
         units=[UnitRead.model_validate(unit, from_attributes=True) for unit in units],
         scenarios=[CalcScenarioRead.model_validate(s, from_attributes=True) for s in scenarios],
         runs=[CalcRunRead.model_validate(r, from_attributes=True) for r in runs],
-        comparisons=[CalcComparisonRead.model_validate(c, from_attributes=True) for c in comparisons],
+        comparisons=[
+            CalcComparisonRead.model_validate(c, from_attributes=True) for c in comparisons
+        ],
         comments=[CommentRead.model_validate(c, from_attributes=True) for c in comments],
     )
 

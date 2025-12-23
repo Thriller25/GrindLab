@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class FlowsheetBase(BaseModel):
@@ -24,9 +24,8 @@ class FlowsheetUpdate(BaseModel):
 
 
 class FlowsheetRead(FlowsheetBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        orm_mode = True

@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   fetchDashboard,
   fetchMyProjects,
+  fetchProjectComments,
   seedDemoProject,
   DashboardResponse,
   DashboardCalcRunSummary,
   ProjectDTO,
+  ProjectComment,
 } from "../api/client";
 
 const formatDateTime = (value?: string | null) => {
-  if (!value) return "Дата не указана";
+  if (!value) return "-";
   return new Date(value).toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
@@ -46,6 +48,47 @@ export const HomePage = () => {
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+
+  const loadComments = useCallback(
+    async (projectsList: ProjectDTO[]) => {
+      if (!projectsList.length) {
+        setDashboard((prev) => ({
+          ...prev,
+          recent_comments: [],
+          summary: { ...(prev.summary ?? {}), comments_total: 0 },
+        }));
+        return;
+      }
+      setCommentsLoading(true);
+      setCommentsError(null);
+      try {
+        const topProjects = projectsList.slice(0, 3);
+        const responses = await Promise.all(
+          topProjects.map((project) =>
+            fetchProjectComments(project.id, { limit: 5 }).catch(() => ({ items: [], total: 0 })),
+          ),
+        );
+        const merged = responses.flatMap((resp) => resp?.items ?? []);
+        merged.sort((a, b) => {
+          const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return bDate - aDate;
+        });
+        setDashboard((prev) => ({
+          ...prev,
+          recent_comments: merged,
+          summary: { ...(prev.summary ?? {}), comments_total: merged.length },
+        }));
+      } catch (err) {
+        setCommentsError("Не удалось загрузить комментарии. Попробуйте ещё раз.");
+      } finally {
+        setCommentsLoading(false);
+      }
+    },
+    [setDashboard],
+  );
 
   const loadDashboard = () => {
     setIsLoading(true);
@@ -68,6 +111,7 @@ export const HomePage = () => {
         const items = Array.isArray(data?.items) ? data.items : [];
         const total = typeof data?.total === "number" ? data.total : items.length;
         setProjects(items);
+        loadComments(items);
         setProjectsTotal(total);
       })
       .catch(() => {
@@ -80,10 +124,36 @@ export const HomePage = () => {
     loadProjects();
   }, []);
 
+  useEffect(() => {
+    const handleFocus = () => {
+      loadProjects();
+      loadDashboard();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
   const runs: DashboardCalcRunSummary[] = useMemo(
     () => dashboard?.recent_calc_runs ?? [],
     [dashboard?.recent_calc_runs],
   );
+  const comments = useMemo(() => dashboard?.recent_comments ?? [], [dashboard?.recent_comments]);
+
+  const handleOpenCommentTarget = (comment: ProjectComment) => {
+    if (comment.calc_run_id) {
+      navigate(`/calc-runs/${comment.calc_run_id}`);
+      return;
+    }
+    if (comment.scenario_id && comment.project_id != null) {
+      navigate(`/projects/${comment.project_id}?scenarioId=${comment.scenario_id}`);
+      return;
+    }
+    if (comment.project_id != null) {
+      navigate(`/projects/${comment.project_id}`);
+    }
+  };
 
   const handleSeedProject = async () => {
     setIsSeeding(true);
@@ -241,19 +311,43 @@ export const HomePage = () => {
         <section className="section">
           <div className="section-heading">
             <h2>Последние комментарии</h2>
-            <p className="section-subtitle">Сообщения по сценариям и расчётам</p>
+            <p className="section-subtitle">Всего: {dashboard.summary?.comments_total ?? comments.length}</p>
           </div>
-          {dashboard.recent_comments?.length ? (
+          {commentsError && <div className="alert error">{commentsError}</div>}
+          {commentsLoading && <div className="muted">Загружаем комментарии...</div>}
+          {!commentsLoading && comments.length ? (
             <ul className="comments-list">
-              {dashboard.recent_comments.map((c, idx) => (
-                <li key={idx} className="comment-item">
-                  {c.text || JSON.stringify(c)}
+              {comments.map((comment) => (
+                <li key={comment.id} className="comment-item">
+                  <div className="comment-text">{comment.text}</div>
+                  <div className="muted">
+                    {(comment.author && comment.author.trim()) || "anonymous"} · {formatDateTime(comment.created_at)}
+                    {comment.target_type === "scenario" && " · Сценарий"}
+                    {comment.target_type === "calc_run" && " · Запуск"}
+                  </div>
+                  <div className="actions" style={{ gap: 8, marginTop: 4 }}>
+                    {comment.scenario_id && (
+                      <button className="btn secondary" type="button" onClick={() => handleOpenCommentTarget(comment)}>
+                        К сценарию
+                      </button>
+                    )}
+                    {comment.calc_run_id && (
+                      <button className="btn secondary" type="button" onClick={() => handleOpenCommentTarget(comment)}>
+                        Открыть запуск
+                      </button>
+                    )}
+                    {!comment.scenario_id && !comment.calc_run_id && comment.project_id != null && (
+                      <button className="btn secondary" type="button" onClick={() => handleOpenCommentTarget(comment)}>
+                        К проекту
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
-          ) : (
-            <div className="empty-state">Нет комментариев</div>
-          )}
+          ) : !commentsLoading ? (
+            <div className="empty-state">Комментариев пока нет.</div>
+          ) : null}
         </section>
       </div>
     </div>

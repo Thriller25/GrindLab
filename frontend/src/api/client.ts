@@ -86,7 +86,7 @@ export interface DashboardResponse {
   projects: any[];
   member_projects: any[];
   recent_calc_runs: DashboardCalcRunSummary[];
-  recent_comments: any[];
+  recent_comments: ProjectComment[];
   favorites?: {
     projects?: any[];
     scenarios?: any[];
@@ -306,10 +306,14 @@ export type ProjectCalcRunListItem = {
 };
 
 export type ProjectComment = {
-  id?: string | number;
-  text?: string | null;
+  id: string;
+  project_id: number;
+  scenario_id?: string | null;
+  calc_run_id?: string | null;
+  target_type?: "scenario" | "calc_run";
+  text: string;
   created_at?: string | null;
-  author?: { id?: string | number; email?: string; full_name?: string | null };
+  author?: string | null;
 };
 
 export type ProjectDashboardResponse = {
@@ -329,6 +333,31 @@ export async function fetchMyProjects(): Promise<ProjectListResponse> {
 export async function fetchProjectDashboard(projectId: string | number): Promise<ProjectDashboardResponse> {
   const resp = await api.get<ProjectDashboardResponse>(`/api/projects/${projectId}/dashboard`);
   return resp.data;
+}
+
+export type CommentListResponse = { items: ProjectComment[]; total: number };
+
+export async function fetchProjectComments(
+  projectId: string | number,
+  params?: { limit?: number },
+): Promise<CommentListResponse> {
+  const queryParams = params?.limit ? { limit: params.limit } : undefined;
+  const resp = await api.get<CommentListResponse>(`/api/projects/${projectId}/comments`, { params: queryParams });
+  return resp.data;
+}
+
+export type CreateProjectCommentPayload = {
+  scenario_id?: string;
+  calc_run_id?: string;
+  text: string;
+  author?: string;
+};
+
+export async function createProjectComment(
+  projectId: string | number,
+  payload: CreateProjectCommentPayload,
+): Promise<ProjectComment> {
+  return withAuthExpirationHandling(() => api.post<ProjectComment>(`/api/projects/${projectId}/comments`, payload));
 }
 
 export async function seedDemoProject(): Promise<ProjectDTO> {
@@ -378,6 +407,11 @@ export interface CalcRunRead {
 
 export async function fetchCalcRun(runId: string | number): Promise<CalcRunRead> {
   const resp = await api.get<CalcRunRead>(`/api/calc-runs/${runId}`);
+  return resp.data;
+}
+
+export async function fetchCalcRunComments(runId: string, limit = 20): Promise<CommentListResponse> {
+  const resp = await api.get<CommentListResponse>(`/api/calc-runs/${runId}/comments`, { params: { limit } });
   return resp.data;
 }
 
@@ -441,8 +475,9 @@ export async function setCalcRunBaseline(runId: string): Promise<CalcRun> {
 }
 
 export async function updateCalcRunComment(runId: string, comment: string | null): Promise<GrindMvpRunDetail> {
-  const resp = await api.put<GrindMvpRunDetail>(`/api/calc/grind-mvp-runs/${runId}/comment`, { comment });
-  return resp.data;
+  return withAuthExpirationHandling(() =>
+    api.put<GrindMvpRunDetail>(`/api/calc/grind-mvp-runs/${runId}/comment`, { comment }),
+  );
 }
 
 export async function fetchPlants(): Promise<PlantSummary[]> {

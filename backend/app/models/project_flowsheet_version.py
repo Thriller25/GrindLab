@@ -1,8 +1,7 @@
-from sqlalchemy import Column, ForeignKey, UniqueConstraint, Integer, DateTime, func
+from app.db import Base
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-
-from app.db import Base
 
 
 class ProjectFlowsheetVersion(Base):
@@ -10,7 +9,9 @@ class ProjectFlowsheetVersion(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("project.id"), nullable=False)
-    flowsheet_version_id = Column(UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False)
+    flowsheet_version_id = Column(
+        UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -22,12 +23,12 @@ class ProjectFlowsheetVersion(Base):
     project = relationship(
         "Project",
         back_populates="flowsheet_version_links",
-        overlaps="flowsheet_versions,projects,project_links",
     )
     flowsheet_version = relationship(
         "FlowsheetVersion",
         back_populates="project_links",
-        overlaps="projects,flowsheet_versions,project,project_links",
     )
 
-    __table_args__ = (UniqueConstraint("project_id", "flowsheet_version_id", name="uq_project_flowsheet_version"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "flowsheet_version_id", name="uq_project_flowsheet_version"),
+    )

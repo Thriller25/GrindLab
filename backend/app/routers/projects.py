@@ -1,33 +1,32 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
-from sqlalchemy import func, or_, and_
-from sqlalchemy.orm import Session
-
 from app import models
 from app.db import get_db
-from app.routers.auth import get_current_user_optional, get_current_user
+from app.routers.auth import get_current_user, get_current_user_optional
 from app.schemas import (
-    ProjectCreate,
-    ProjectDetail,
-    ProjectListResponse,
-    ProjectRead,
+    CalcRunKpiDiffSummary,
+    CalcRunKpiSummary,
     FlowsheetVersionRead,
-    ProjectSummary,
+    GrindMvpRunSummary,
+    PaginatedResponse,
+    ProjectCreate,
+    ProjectDashboardResponse,
+    ProjectDetail,
+    ProjectFlowsheetSummary,
+    ProjectFlowsheetVersionRead,
+    ProjectListResponse,
     ProjectMemberAddRequest,
     ProjectMemberRead,
-    ProjectDashboardResponse,
-    ProjectFlowsheetVersionRead,
-    GrindMvpRunSummary,
-    ProjectFlowsheetSummary,
-    CalcRunKpiSummary,
-    CalcRunKpiDiffSummary,
+    ProjectRead,
+    ProjectSummary,
 )
-from app.schemas.user import UserRead
-from app.schemas.calc_scenario import CalcScenarioRead
 from app.schemas.calc_run import CalcRunListItem
+from app.schemas.calc_scenario import CalcScenarioRead
 from app.schemas.comment import CommentRead
-from app.services.project_service import attach_flowsheet_version_to_project as attach_link_to_project
+from app.schemas.user import UserRead
+from app.services.project_service import (
+    attach_flowsheet_version_to_project as attach_link_to_project,
+)
 from app.services.run_metrics import (
     extract_kpi,
     extract_model_version,
@@ -35,21 +34,51 @@ from app.services.run_metrics import (
     find_best_project_run,
     is_grind_mvp_run,
 )
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, joinedload
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-@router.get("", response_model=list[ProjectRead])
+@router.get("", response_model=PaginatedResponse[ProjectRead])
 def list_projects(
     plant_id: uuid.UUID | None = Query(default=None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user_optional),
-) -> list[ProjectRead]:
-    query = db.query(models.Project)
+) -> PaginatedResponse[ProjectRead]:
+    """
+    List projects with pagination.
+
+    - **skip**: Number of items to skip (default: 0)
+    - **limit**: Number of items to return (default: 20, max: 100)
+    - **plant_id**: Optional filter by plant ID
+    """
+    # Start with base query
+    base_query = db.query(models.Project)
     if plant_id:
-        query = query.filter(models.Project.plant_id == plant_id)
-    projects = query.order_by(models.Project.created_at.desc()).all()
-    return [ProjectRead.model_validate(p, from_attributes=True) for p in projects]
+        base_query = base_query.filter(models.Project.plant_id == plant_id)
+
+    # Count total BEFORE joinedload
+    total = base_query.count()
+
+    # Apply joinedload to prevent N+1 queries on actual data fetch
+    query = base_query.options(
+        joinedload(models.Project.owner),
+        joinedload(models.Project.plant),
+    )
+
+    # Apply pagination
+    projects = query.order_by(models.Project.created_at.desc()).offset(skip).limit(limit).all()
+
+    return PaginatedResponse(
+        total=total,
+        skip=skip,
+        limit=limit,
+        items=[ProjectRead.model_validate(p, from_attributes=True) for p in projects],
+    )
 
 
 def _ensure_project_exists_and_get(db: Session, project_id) -> models.Project:
@@ -75,8 +104,12 @@ def _build_grind_mvp_summary(run: models.CalcRun) -> GrindMvpRunSummary:
         id=run.id,
         created_at=run.created_at,
         model_version=extract_model_version(run) or "grind_mvp_v1",
-        plant_id=str(input_json.get("plant_id")) if input_json.get("plant_id") is not None else None,
-        flowsheet_version_id=str(run.flowsheet_version_id) if run.flowsheet_version_id is not None else None,
+        plant_id=(
+            str(input_json.get("plant_id")) if input_json.get("plant_id") is not None else None
+        ),
+        flowsheet_version_id=(
+            str(run.flowsheet_version_id) if run.flowsheet_version_id is not None else None
+        ),
         scenario_name=run.scenario_name or input_json.get("scenario_name"),
         project_id=getattr(run, "project_id", None),
         project_name=getattr(run.project, "name", None) if getattr(run, "project", None) else None,
@@ -143,7 +176,9 @@ def _find_grind_mvp_runs(
     return [run for run in runs if is_grind_mvp_run(run)]
 
 
-def _load_project_flowsheet_versions(db: Session, project_id: int) -> list[ProjectFlowsheetVersionRead]:
+def _load_project_flowsheet_versions(
+    db: Session, project_id: int
+) -> list[ProjectFlowsheetVersionRead]:
     rows = (
         db.query(models.ProjectFlowsheetVersion, models.FlowsheetVersion, models.Flowsheet)
         .join(
@@ -156,7 +191,11 @@ def _load_project_flowsheet_versions(db: Session, project_id: int) -> list[Proje
     )
     result: list[ProjectFlowsheetVersionRead] = []
     for link, version, flowsheet in rows:
-        updated_at = getattr(version, "updated_at", None) or getattr(link, "updated_at", None) or version.created_at
+        updated_at = (
+            getattr(version, "updated_at", None)
+            or getattr(link, "updated_at", None)
+            or version.created_at
+        )
         result.append(
             ProjectFlowsheetVersionRead(
                 id=link.id or version.id,
@@ -176,10 +215,12 @@ def _get_project_runs(
 ) -> list[models.CalcRun]:
     return (
         db.query(models.CalcRun)
+        .outerjoin(models.CalcScenario, models.CalcScenario.id == models.CalcRun.scenario_id)
         .filter(
             models.CalcRun.project_id == project_id,
             models.CalcRun.flowsheet_version_id == flowsheet_version_id,
             models.CalcRun.status == "success",
+            or_(models.CalcScenario.is_baseline.is_(False), models.CalcRun.scenario_id.is_(None)),
         )
         .all()
     )
@@ -189,8 +230,13 @@ def _build_project_detail(db: Session, project: models.Project) -> ProjectDetail
     flowsheet_versions = _load_project_flowsheet_versions(db, project.id)
 
     rows = (
-        db.query(models.ProjectFlowsheetVersion, models.FlowsheetVersion, models.Flowsheet, models.Plant)
-        .join(models.FlowsheetVersion, models.ProjectFlowsheetVersion.flowsheet_version_id == models.FlowsheetVersion.id)
+        db.query(
+            models.ProjectFlowsheetVersion, models.FlowsheetVersion, models.Flowsheet, models.Plant
+        )
+        .join(
+            models.FlowsheetVersion,
+            models.ProjectFlowsheetVersion.flowsheet_version_id == models.FlowsheetVersion.id,
+        )
         .join(models.Flowsheet, models.Flowsheet.id == models.FlowsheetVersion.flowsheet_id)
         .outerjoin(models.Plant, models.Plant.id == models.Flowsheet.plant_id)
         .filter(models.ProjectFlowsheetVersion.project_id == project.id)
@@ -209,22 +255,26 @@ def _build_project_detail(db: Session, project: models.Project) -> ProjectDetail
             diff_summary = CalcRunKpiDiffSummary(
                 throughput_tph_delta=(
                     None
-                    if baseline_summary.throughput_tph is None or best_summary.throughput_tph is None
+                    if baseline_summary.throughput_tph is None
+                    or best_summary.throughput_tph is None
                     else best_summary.throughput_tph - baseline_summary.throughput_tph
                 ),
                 specific_energy_kwhpt_delta=(
                     None
-                    if baseline_summary.specific_energy_kwhpt is None or best_summary.specific_energy_kwhpt is None
+                    if baseline_summary.specific_energy_kwhpt is None
+                    or best_summary.specific_energy_kwhpt is None
                     else best_summary.specific_energy_kwhpt - baseline_summary.specific_energy_kwhpt
                 ),
                 p80_mm_delta=(
                     None
-                    if baseline_summary.product_p80_mm is None or best_summary.product_p80_mm is None
+                    if baseline_summary.product_p80_mm is None
+                    or best_summary.product_p80_mm is None
                     else best_summary.product_p80_mm - baseline_summary.product_p80_mm
                 ),
                 circulating_load_pct_delta=(
                     None
-                    if baseline_summary.circulating_load_pct is None or best_summary.circulating_load_pct is None
+                    if baseline_summary.circulating_load_pct is None
+                    or best_summary.circulating_load_pct is None
                     else best_summary.circulating_load_pct - baseline_summary.circulating_load_pct
                 ),
                 power_use_pct_delta=(
@@ -262,7 +312,9 @@ def _build_project_detail(db: Session, project: models.Project) -> ProjectDetail
     )
 
 
-def _check_project_read_access(db: Session, project: models.Project, user: models.User | None) -> None:
+def _check_project_read_access(
+    db: Session, project: models.Project, user: models.User | None
+) -> None:
     # Public (ownerless) projects are readable by anyone.
     if project.owner_user_id is None:
         return
@@ -272,7 +324,9 @@ def _check_project_read_access(db: Session, project: models.Project, user: model
         return
     membership = (
         db.query(models.ProjectMember)
-        .filter(models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id)
+        .filter(
+            models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id
+        )
         .first()
     )
     if membership is None:
@@ -322,10 +376,10 @@ def seed_demo_project(
 ) -> ProjectRead:
     from app.demo_seed import (
         _get_or_create_demo_user,
-        seed_plants_and_flowsheets,
-        seed_projects,
-        seed_project_flowsheet_links,
         seed_grind_mvp_runs,
+        seed_plants_and_flowsheets,
+        seed_project_flowsheet_links,
+        seed_projects,
     )
 
     _get_or_create_demo_user(db)
@@ -340,7 +394,10 @@ def seed_demo_project(
         seed_grind_mvp_runs(db, projects, demo_versions)
 
     if not projects:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create demo project")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create demo project",
+        )
 
     project = projects[0]
     db.refresh(project)
@@ -446,7 +503,10 @@ def get_project_detail(
 
 
 def _calculate_project_summary(
-    db: Session, project: models.Project, flowsheet_version_ids: list[uuid.UUID], current_user: models.User
+    db: Session,
+    project: models.Project,
+    flowsheet_version_ids: list[uuid.UUID],
+    current_user: models.User,
 ) -> ProjectSummary:
     _check_project_read_access(db, project, current_user)
     if not flowsheet_version_ids:
@@ -510,46 +570,32 @@ def _calculate_project_summary(
         .all()
     ]
 
-    comments_total = 0
-    if scenario_ids:
-        comments_total += (
-            db.query(func.count(models.Comment.id))
-            .filter(models.Comment.entity_type == "scenario", models.Comment.entity_id.in_(scenario_ids))
-            .scalar()
-            or 0
-        )
-    if run_ids:
-        comments_total += (
-            db.query(func.count(models.Comment.id))
-            .filter(models.Comment.entity_type == "calc_run", models.Comment.entity_id.in_(run_ids))
-            .scalar()
-            or 0
-        )
-
     scenario_last = (
-        db.query(func.max(models.CalcScenario.created_at)).filter(models.CalcScenario.id.in_(scenario_ids)).scalar()
+        db.query(func.max(models.CalcScenario.created_at))
+        .filter(models.CalcScenario.id.in_(scenario_ids))
+        .scalar()
         if scenario_ids
         else None
     )
     run_last = (
-        db.query(func.max(models.CalcRun.started_at)).filter(models.CalcRun.id.in_(run_ids)).scalar() if run_ids else None
+        db.query(func.max(models.CalcRun.started_at))
+        .filter(models.CalcRun.id.in_(run_ids))
+        .scalar()
+        if run_ids
+        else None
     )
 
-    comment_last_candidates = []
-    if scenario_ids:
-        comment_last_candidates.append(
-            db.query(func.max(models.Comment.created_at))
-            .filter(models.Comment.entity_type == "scenario", models.Comment.entity_id.in_(scenario_ids))
-            .scalar()
-        )
-    if run_ids:
-        comment_last_candidates.append(
-            db.query(func.max(models.Comment.created_at))
-            .filter(models.Comment.entity_type == "calc_run", models.Comment.entity_id.in_(run_ids))
-            .scalar()
-        )
-    comment_last_candidates = [dt for dt in comment_last_candidates if dt is not None]
-    comment_last = max(comment_last_candidates) if comment_last_candidates else None
+    comments_total = (
+        db.query(func.count(models.Comment.id))
+        .filter(models.Comment.project_id == project.id)
+        .scalar()
+        or 0
+    )
+    comment_last = (
+        db.query(func.max(models.Comment.created_at))
+        .filter(models.Comment.project_id == project.id)
+        .scalar()
+    )
 
     last_candidates = [dt for dt in (scenario_last, run_last, comment_last) if dt is not None]
     last_activity_at = max(last_candidates) if last_candidates else None
@@ -590,7 +636,9 @@ def list_project_members(
     project = _ensure_project_exists_and_get(db, project_id)
     _check_project_read_access(db, project, current_user)
 
-    memberships = db.query(models.ProjectMember).filter(models.ProjectMember.project_id == project.id).all()
+    memberships = (
+        db.query(models.ProjectMember).filter(models.ProjectMember.project_id == project.id).all()
+    )
     result: list[ProjectMemberRead] = []
     for m in memberships:
         result.append(
@@ -603,7 +651,9 @@ def list_project_members(
     return result
 
 
-@router.post("/{project_id}/members", response_model=ProjectMemberRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{project_id}/members", response_model=ProjectMemberRead, status_code=status.HTTP_201_CREATED
+)
 def add_project_member(
     project_id: str,
     payload: ProjectMemberAddRequest,
@@ -618,11 +668,15 @@ def add_project_member(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.id == project.owner_user_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already the project owner")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="User is already the project owner"
+        )
 
     existing = (
         db.query(models.ProjectMember)
-        .filter(models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id)
+        .filter(
+            models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id
+        )
         .first()
     )
     if existing:
@@ -657,11 +711,15 @@ def remove_project_member(
 
     membership = (
         db.query(models.ProjectMember)
-        .filter(models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user_id)
+        .filter(
+            models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user_id
+        )
         .first()
     )
     if membership is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project member not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project member not found"
+        )
 
     db.delete(membership)
     db.commit()
@@ -681,6 +739,8 @@ def get_project_dashboard(
     project = _ensure_project_exists_and_get(db, project_id)
     if current_user is None and project.owner_user_id is not None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Login required")
+
+    # Get project flowsheet version links
     links = (
         db.query(models.ProjectFlowsheetVersion)
         .filter(models.ProjectFlowsheetVersion.project_id == project.id)
@@ -690,15 +750,11 @@ def get_project_dashboard(
     summary = _calculate_project_summary(db, project, flowsheet_version_ids, current_user)
     _check_project_read_access(db, project, current_user)
 
-    if flowsheet_version_ids:
-        versions = (
-            db.query(models.FlowsheetVersion)
-            .filter(models.FlowsheetVersion.id.in_(flowsheet_version_ids))
-            .all()
-        )
-    else:
-        versions = []
-    flowsheet_versions_dto = [FlowsheetVersionRead.model_validate(v, from_attributes=True) for v in versions]
+    # Get flowsheet versions from already-loaded links (no additional query needed)
+    flowsheet_versions_dto = [
+        FlowsheetVersionRead.model_validate(link.flowsheet_version, from_attributes=True)
+        for link in links
+    ]
 
     if flowsheet_version_ids:
         scenarios = (
@@ -728,32 +784,16 @@ def get_project_dashboard(
         recent_runs = []
     recent_runs_dto = [CalcRunListItem.model_validate(r, from_attributes=True) for r in recent_runs]
 
-    scenario_ids = [s.id for s in scenarios]
-    run_ids = [r.id for r in recent_runs] if recent_runs else [
-        row[0]
-        for row in db.query(models.CalcRun.id)
-        .filter(
-            models.CalcRun.flowsheet_version_id.in_(flowsheet_version_ids),
-            models.CalcRun.project_id == project.id,
-        )
+    recent_comments = (
+        db.query(models.Comment)
+        .filter(models.Comment.project_id == project.id)
+        .order_by(models.Comment.created_at.desc(), models.Comment.id.desc())
+        .limit(RECENT_COMMENTS_LIMIT)
         .all()
-    ] if flowsheet_version_ids else []
-
-    recent_comments: list[models.Comment] = []
-    conditions = []
-    if scenario_ids:
-        conditions.append(and_(models.Comment.entity_type == "scenario", models.Comment.entity_id.in_(scenario_ids)))
-    if run_ids:
-        conditions.append(and_(models.Comment.entity_type == "calc_run", models.Comment.entity_id.in_(run_ids)))
-    if conditions:
-        recent_comments = (
-            db.query(models.Comment)
-            .filter(or_(*conditions))
-            .order_by(models.Comment.created_at.desc())
-            .limit(RECENT_COMMENTS_LIMIT)
-            .all()
-        )
-    recent_comments_dto = [CommentRead.model_validate(c, from_attributes=True) for c in recent_comments]
+    )
+    recent_comments_dto = [
+        CommentRead.model_validate(c, from_attributes=True) for c in recent_comments
+    ]
 
     return ProjectDashboardResponse(
         project=ProjectRead.model_validate(project, from_attributes=True),

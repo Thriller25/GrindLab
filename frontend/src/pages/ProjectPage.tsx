@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import BackToHomeButton from "../components/BackToHomeButton";
 import {
@@ -7,6 +7,8 @@ import {
   fetchProjectDashboard,
   isAuthExpiredError,
   ProjectDashboardResponse,
+  createProjectComment,
+  ProjectComment,
   setCalcScenarioBaseline,
   updateScenario,
 } from "../api/client";
@@ -28,6 +30,9 @@ export const ProjectPage = () => {
     is_recommended: boolean;
     recommendation_note: string;
   } | null>(null);
+  const [commentModal, setCommentModal] = useState<{ id: string; name: string } | null>(null);
+  const [commentText, setCommentText] = useState("");
+  const [commentSaving, setCommentSaving] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<CalcScenario | null>(null);
   const [scenarioSaving, setScenarioSaving] = useState(false);
   const [recommendationSaving, setRecommendationSaving] = useState(false);
@@ -36,14 +41,46 @@ export const ProjectPage = () => {
   const [refreshPending, setRefreshPending] = useState(
     () => new URLSearchParams(location.search).get("refresh") === "1",
   );
+  const [pendingScenarioId, setPendingScenarioId] = useState<string | null>(
+    () => new URLSearchParams(location.search).get("scenarioId"),
+  );
+  const [highlightedScenarioId, setHighlightedScenarioId] = useState<string | null>(null);
+  const scenarioRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const highlightTimeoutRef = useRef<number | null>(null);
   const [authExpired, setAuthExpired] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(() => hasAuth());
+
+  const scrollToScenario = useCallback(
+    (scenarioId: string) => {
+      setHighlightedScenarioId(scenarioId);
+      const tryScroll = (attemptsLeft: number) => {
+        const row = scenarioRowRefs.current[scenarioId];
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else if (attemptsLeft > 0) {
+          window.requestAnimationFrame(() => tryScroll(attemptsLeft - 1));
+          return;
+        }
+        if (highlightTimeoutRef.current) {
+          window.clearTimeout(highlightTimeoutRef.current);
+        }
+        highlightTimeoutRef.current = window.setTimeout(() => {
+          setHighlightedScenarioId((current) => (current === scenarioId ? null : current));
+          highlightTimeoutRef.current = null;
+        }, 4000);
+      };
+      tryScroll(3);
+    },
+    [],
+  );
 
   const handleAuthExpired = () => {
     setAuthExpired(true);
     setIsAuthenticated(false);
     setRecommendModal(null);
     setRenameModal(null);
+    setCommentModal(null);
+    setCommentText("");
     setDeleteCandidate(null);
     setScenarioActionError(null);
     setScenarioActionMessage(null);
@@ -121,6 +158,22 @@ export const ProjectPage = () => {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const scenarioIdFromQuery = params.get("scenarioId");
+    if (!scenarioIdFromQuery) return;
+    setPendingScenarioId(scenarioIdFromQuery);
+    params.delete("scenarioId");
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+      },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
     if (!refreshPending || !projectId) return;
     loadDashboard();
     const params = new URLSearchParams(location.search);
@@ -136,8 +189,37 @@ export const ProjectPage = () => {
     setRefreshPending(false);
   }, [refreshPending, projectId, loadDashboard, location.pathname, location.search, navigate]);
 
+  useEffect(() => {
+    if (!pendingScenarioId) return;
+    if (!scenarios.length) return;
+    const row = scenarioRowRefs.current[pendingScenarioId];
+    if (row) {
+      scrollToScenario(pendingScenarioId);
+      setPendingScenarioId(null);
+      return;
+    }
+    if (scenarios.length && !scenarios.some((scenario) => scenario.id === pendingScenarioId)) {
+      setPendingScenarioId(null);
+    }
+  }, [pendingScenarioId, scenarios, scrollToScenario]);
+
+  useEffect(
+    () => () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
   const recommendationActionsDisabled = !isAuthenticated || authExpired;
   const summary = data?.summary;
+  const commentActionDisabled = !isAuthenticated || authExpired || commentSaving;
+  const commentActionTitle = !isAuthenticated
+    ? "Требуется вход"
+    : authExpired
+      ? "Сессия истекла. Войдите снова."
+      : undefined;
 
   const handleStartRun = () => {
     if (!projectId) return;
@@ -186,6 +268,16 @@ export const ProjectPage = () => {
     [navigate],
   );
 
+  const handleOpenCommentTarget = (comment: ProjectComment) => {
+    if (comment.calc_run_id) {
+      handleOpenRunDetails(comment.calc_run_id);
+      return;
+    }
+    if (comment.scenario_id) {
+      scrollToScenario(comment.scenario_id);
+    }
+  };
+
   const handleRenameClick = (scenario: CalcScenario) => {
     setScenarioActionError(null);
     setScenarioActionMessage(null);
@@ -212,6 +304,43 @@ export const ProjectPage = () => {
     setScenarioActionError(null);
     setScenarioActionMessage(null);
     setDeleteCandidate(scenario);
+  };
+
+  const handleOpenCommentModal = (scenario: CalcScenario) => {
+    setScenarioActionError(null);
+    setScenarioActionMessage(null);
+    setCommentModal({ id: scenario.id, name: scenario.name });
+    setCommentText("");
+  };
+
+  const handleSaveComment = async () => {
+    if (!commentModal || !projectId) return;
+    const trimmed = commentText.trim();
+    if (!trimmed) return;
+    setCommentSaving(true);
+    setScenarioActionError(null);
+    try {
+      await createProjectComment(projectId, { scenario_id: commentModal.id, text: trimmed });
+      setScenarioActionMessage("Комментарий сохранён.");
+      setCommentModal(null);
+      setCommentText("");
+      loadDashboard();
+    } catch (err) {
+      if (isAuthExpiredError(err)) {
+        handleAuthExpired();
+      } else {
+        const status = (err as any)?.response?.status;
+        if (status === 403) {
+          setScenarioActionError("Недостаточно прав для изменения комментариев.");
+        } else if (status === 401) {
+          handleAuthExpired();
+        } else {
+          setScenarioActionError("Не удалось сохранить комментарий. Попробуйте ещё раз.");
+        }
+      }
+    } finally {
+      setCommentSaving(false);
+    }
   };
 
   const handleRenameScenario = async () => {
@@ -409,6 +538,41 @@ export const ProjectPage = () => {
 
             <section className="section">
               <div className="section-heading">
+                <h2>Последние комментарии</h2>
+                <p className="section-subtitle">Всего: {summary?.comments_total ?? data?.recent_comments?.length ?? 0}</p>
+              </div>
+              {data?.recent_comments?.length ? (
+                <ul className="comments-list">
+                  {data.recent_comments.map((comment) => (
+                    <li key={comment.id} className="comment-item">
+                      <div className="comment-text">{comment.text}</div>
+                      <div className="muted">
+                        {(comment.author && comment.author.trim()) || "anonymous"} · {formatDateTime(comment.created_at)}
+                        {comment.target_type === "scenario" && " · Сценарий"}
+                        {comment.target_type === "calc_run" && " · Запуск"}
+                      </div>
+                      <div className="actions" style={{ gap: 8, marginTop: 4 }}>
+                        {comment.scenario_id && (
+                          <button className="btn secondary" type="button" onClick={() => handleOpenCommentTarget(comment)}>
+                            К сценарию
+                          </button>
+                        )}
+                        {comment.calc_run_id && (
+                          <button className="btn secondary" type="button" onClick={() => handleOpenCommentTarget(comment)}>
+                            Открыть запуск
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="empty-state">Комментариев пока нет.</div>
+              )}
+            </section>
+
+            <section className="section">
+              <div className="section-heading">
                 <h2>Сценарии</h2>
                 <p className="section-subtitle">Всего: {summary?.scenarios_total ?? scenarios.length ?? 0}</p>
               </div>
@@ -432,7 +596,14 @@ export const ProjectPage = () => {
                       const versionLabel =
                         flowsheetVersionNameById[String(scenario.flowsheet_version_id)] || String(scenario.flowsheet_version_id);
                       return (
-                        <tr key={scenario.id}>
+                        <tr
+                          key={scenario.id}
+                          data-scenario-id={scenario.id}
+                          ref={(node) => {
+                            scenarioRowRefs.current[scenario.id] = node;
+                          }}
+                          style={highlightedScenarioId === scenario.id ? { backgroundColor: "#fff6e5" } : undefined}
+                        >
                           <td>
                             <div className="project-name">
                               {scenario.name}
@@ -456,6 +627,15 @@ export const ProjectPage = () => {
                                 onClick={() => handleRunScenario(scenario.id)}
                               >
                                 Запустить
+                              </button>
+                              <button
+                                className="btn secondary"
+                                type="button"
+                                onClick={() => handleOpenCommentModal(scenario)}
+                                disabled={commentActionDisabled}
+                                title={commentActionTitle}
+                              >
+                                Комментарий
                               </button>
                               <button
                                 className="btn secondary"
@@ -639,6 +819,36 @@ export const ProjectPage = () => {
           </div>
         </div>
       )}
+      {commentModal && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Комментарий к сценарию</h3>
+            <p className="section-subtitle">{commentModal.name}</p>
+            <label>
+              Текст комментария
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Введите комментарий"
+              />
+            </label>
+            <div className="actions modal-actions">
+              <button className="btn secondary" type="button" onClick={() => setCommentModal(null)} disabled={commentSaving}>
+                Отмена
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={handleSaveComment}
+                disabled={commentSaving || !commentText.trim() || !isAuthenticated || authExpired}
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteCandidate && (
         <div className="modal-backdrop">
           <div className="modal">

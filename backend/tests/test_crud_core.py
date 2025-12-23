@@ -1,11 +1,6 @@
 ﻿from fastapi.testclient import TestClient
 
-from .utils import (
-    create_flowsheet,
-    create_flowsheet_version,
-    create_plant,
-    create_unit,
-)
+from .utils import create_flowsheet, create_flowsheet_version, create_plant
 
 
 def test_plant_crud(client: TestClient):
@@ -25,7 +20,7 @@ def test_plant_crud(client: TestClient):
     # list
     resp = client.get("/api/plants/")
     assert resp.status_code == 200
-    assert any(item["id"] == plant_id for item in resp.json())
+    assert any(item["id"] == plant_id for item in resp.json()["items"])
 
     # update
     update_payload = {"name": "Plant A Updated"}
@@ -46,7 +41,12 @@ def test_flowsheet_crud(client: TestClient):
     plant_id = create_plant(client)
 
     # create
-    fs_payload = {"plant_id": plant_id, "name": "Flowsheet A", "description": "desc", "status": "DRAFT"}
+    fs_payload = {
+        "plant_id": plant_id,
+        "name": "Flowsheet A",
+        "description": "desc",
+        "status": "DRAFT",
+    }
     resp = client.post("/api/flowsheets/", json=fs_payload)
     assert resp.status_code == 201
     fs = resp.json()
@@ -61,7 +61,7 @@ def test_flowsheet_crud(client: TestClient):
     # list
     resp = client.get("/api/flowsheets/")
     assert resp.status_code == 200
-    assert any(item["id"] == fs_id for item in resp.json())
+    assert any(item["id"] == fs_id for item in resp.json()["items"])
 
     # update
     update_payload = {"name": "Flowsheet A Updated"}
@@ -104,7 +104,7 @@ def test_flowsheet_version_crud(client: TestClient):
     # list
     resp = client.get("/api/flowsheet-versions/")
     assert resp.status_code == 200
-    assert any(item["id"] == fsv_id for item in resp.json())
+    assert any(item["id"] == fsv_id for item in resp.json()["items"])
 
     # update
     update_payload = {"version_label": "v1.1"}
@@ -147,7 +147,7 @@ def test_unit_crud(client: TestClient):
     # list
     resp = client.get("/api/units/")
     assert resp.status_code == 200
-    assert any(item["id"] == unit_id for item in resp.json())
+    assert any(item["id"] == unit_id for item in resp.json()["items"])
 
     # update
     update_payload = {"name": "Crusher 1 Updated"}

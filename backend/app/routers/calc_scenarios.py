@@ -2,10 +2,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from app import models
 from app.db import get_db
 from app.routers.auth import get_current_user_optional
@@ -22,6 +18,9 @@ from app.services.calc_service import (
     get_flowsheet_version_or_404,
     validate_input_json,
 )
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
 router = APIRouter(prefix="/api/calc-scenarios", tags=["calc-scenarios"])
 
@@ -33,7 +32,9 @@ def _get_project_or_404(db: Session, project_id: int) -> models.Project:
     return project
 
 
-def _check_project_read_access(db: Session, project: models.Project, user: models.User | None) -> None:
+def _check_project_read_access(
+    db: Session, project: models.Project, user: models.User | None
+) -> None:
     if project.owner_user_id is None:
         return
     if user is None:
@@ -42,20 +43,28 @@ def _check_project_read_access(db: Session, project: models.Project, user: model
         return
     membership = (
         db.query(models.ProjectMember)
-        .filter(models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id)
+        .filter(
+            models.ProjectMember.project_id == project.id, models.ProjectMember.user_id == user.id
+        )
         .first()
     )
     if membership is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
 
-def _check_project_write_access(db: Session, project: models.Project, user: models.User | None) -> None:
+def _check_project_write_access(
+    db: Session, project: models.Project, user: models.User | None
+) -> None:
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
+        )
     _check_project_read_access(db, project, user)
 
 
-def _ensure_version_linked_to_project(db: Session, project_id: int, flowsheet_version_id: uuid.UUID) -> None:
+def _ensure_version_linked_to_project(
+    db: Session, project_id: int, flowsheet_version_id: uuid.UUID
+) -> None:
     link_exists = (
         db.query(models.ProjectFlowsheetVersion)
         .filter(
@@ -65,10 +74,15 @@ def _ensure_version_linked_to_project(db: Session, project_id: int, flowsheet_ve
         .first()
     )
     if link_exists is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Flowsheet version is not linked to project")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Flowsheet version is not linked to project",
+        )
 
 
-def _clear_project_baseline(db: Session, project_id: int, exclude_id: Optional[uuid.UUID] = None) -> None:
+def _clear_project_baseline(
+    db: Session, project_id: int, exclude_id: Optional[uuid.UUID] = None
+) -> None:
     query = db.query(models.CalcScenario).filter(models.CalcScenario.project_id == project_id)
     if exclude_id:
         query = query.filter(models.CalcScenario.id != exclude_id)
@@ -83,7 +97,9 @@ def _apply_baseline(db: Session, scenario: models.CalcScenario, is_baseline: boo
 
 
 @router.post("", response_model=CalcScenarioRead, status_code=status.HTTP_201_CREATED)
-def create_calc_scenario(payload: CalcScenarioCreate, db: Session = Depends(get_db)) -> CalcScenarioRead:
+def create_calc_scenario(
+    payload: CalcScenarioCreate, db: Session = Depends(get_db)
+) -> CalcScenarioRead:
     try:
         get_flowsheet_version_or_404(db, payload.flowsheet_version_id)
         project = _get_project_or_404(db, payload.project_id)
@@ -132,36 +148,60 @@ def list_calc_scenarios(
     db: Session = Depends(get_db),
 ) -> CalcScenarioListResponse:
     get_flowsheet_version_or_404(db, flowsheet_version_id)
-    query = db.query(models.CalcScenario).filter(models.CalcScenario.flowsheet_version_id == flowsheet_version_id)
+    query = db.query(models.CalcScenario).filter(
+        models.CalcScenario.flowsheet_version_id == flowsheet_version_id
+    )
     if project_id is not None:
         _get_project_or_404(db, project_id)
         _ensure_version_linked_to_project(db, project_id, flowsheet_version_id)
         query = query.filter(models.CalcScenario.project_id == project_id)
 
     total = query.with_entities(func.count()).scalar() or 0
-    scenarios = query.order_by(models.CalcScenario.created_at.desc()).offset(offset).limit(limit).all()
-    items = [CalcScenarioListItem.model_validate(scenario, from_attributes=True) for scenario in scenarios]
+    scenarios = (
+        query.order_by(models.CalcScenario.created_at.desc()).offset(offset).limit(limit).all()
+    )
+    items = [
+        CalcScenarioListItem.model_validate(scenario, from_attributes=True)
+        for scenario in scenarios
+    ]
     return CalcScenarioListResponse(items=items, total=total)
 
 
 @router.get("/by-project/{project_id}", response_model=CalcScenarioListResponse)
 def list_calc_scenarios_by_project(
     project_id: int,
-    flowsheet_version_id: Optional[uuid.UUID] = Query(None, description="Optional flowsheet version filter"),
+    flowsheet_version_id: Optional[uuid.UUID] = Query(
+        None, description="Optional flowsheet version filter"
+    ),
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
 ) -> CalcScenarioListResponse:
     project = _get_project_or_404(db, project_id)
-    query = db.query(models.CalcScenario).filter(models.CalcScenario.project_id == project.id)
+    base_query = db.query(models.CalcScenario).filter(models.CalcScenario.project_id == project.id)
     if flowsheet_version_id:
         get_flowsheet_version_or_404(db, flowsheet_version_id)
         _ensure_version_linked_to_project(db, project.id, flowsheet_version_id)
-        query = query.filter(models.CalcScenario.flowsheet_version_id == flowsheet_version_id)
+        base_query = base_query.filter(
+            models.CalcScenario.flowsheet_version_id == flowsheet_version_id
+        )
 
-    total = query.with_entities(func.count()).scalar() or 0
-    scenarios = query.order_by(models.CalcScenario.created_at.desc()).offset(offset).limit(limit).all()
-    items = [CalcScenarioListItem.model_validate(scenario, from_attributes=True) for scenario in scenarios]
+    # Count before joinedload
+    total = base_query.with_entities(func.count()).scalar() or 0
+
+    # Apply joinedload
+    query = base_query.options(
+        joinedload(models.CalcScenario.project),
+        joinedload(models.CalcScenario.flowsheet_version),
+    )
+
+    scenarios = (
+        query.order_by(models.CalcScenario.created_at.desc()).offset(offset).limit(limit).all()
+    )
+    items = [
+        CalcScenarioListItem.model_validate(scenario, from_attributes=True)
+        for scenario in scenarios
+    ]
     return CalcScenarioListResponse(items=items, total=total)
 
 
@@ -254,7 +294,11 @@ def delete_calc_scenario(
     _check_project_write_access(db, project, current_user)
 
     has_runs = (
-        db.query(models.CalcRun.id).filter(models.CalcRun.scenario_id == scenario.id).limit(1).first() is not None
+        db.query(models.CalcRun.id)
+        .filter(models.CalcRun.scenario_id == scenario.id)
+        .limit(1)
+        .first()
+        is not None
     )
     if has_runs:
         raise HTTPException(

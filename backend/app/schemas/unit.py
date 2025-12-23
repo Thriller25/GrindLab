@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class UnitBase(BaseModel):
@@ -37,7 +37,6 @@ class UnitUpdate(BaseModel):
 
 
 class UnitRead(UnitBase):
-    id: uuid.UUID
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        orm_mode = True
+    id: uuid.UUID
