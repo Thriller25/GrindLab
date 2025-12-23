@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from app import models
+from app.core.exceptions import raise_bad_request, raise_internal_error, raise_not_found
 from app.core.rate_limit import limiter
 from app.db import get_db
 from app.routers.auth import get_current_user_optional
@@ -55,7 +56,7 @@ def calc_flowsheet(
         raise
     except Exception:
         logger.exception("Internal calculation error")
-        raise HTTPException(status_code=500, detail="Internal calculation error")
+        raise_internal_error("run flowsheet calculation")
 
 
 def _is_grind_mvp_run(run: models.CalcRun) -> bool:
@@ -133,12 +134,12 @@ def create_grind_mvp_run(
         result = run_grind_mvp_calculation(db, payload)
         return GrindMvpRunResponse.model_validate(result)
     except CalculationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise_bad_request(str(exc))
     except HTTPException:
         raise
     except Exception:
         logger.exception("Internal calculation error")
-        raise HTTPException(status_code=500, detail="Internal calculation error")
+        raise_internal_error("run Grind MVP calculation")
 
 
 @router.get("/grind-mvp-runs", response_model=list[GrindMvpRunSummary])
@@ -156,7 +157,7 @@ def list_grind_mvp_runs(
 def _get_grind_run_or_404(db: Session, run_id: uuid.UUID) -> models.CalcRun:
     run = db.get(models.CalcRun, run_id)
     if run is None or not _is_grind_mvp_run(run):
-        raise HTTPException(status_code=404, detail="Grind MVP run not found")
+        raise_not_found("GrindMVP run", run_id)
     return run
 
 
@@ -180,7 +181,7 @@ def update_grind_mvp_comment(
     run = _get_grind_run_or_404(db, run_id)
     comment = payload.get("comment") if isinstance(payload, dict) else None
     if comment is None:
-        raise HTTPException(status_code=400, detail="comment is required")
+        raise_bad_request("comment field is required", field="comment")
     run.comment = comment
     db.add(run)
     db.commit()
@@ -207,9 +208,9 @@ def calc_flowsheet_by_scenario(
             started_by_user_id=started_by_user_id,
         )
     except CalculationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise_bad_request(str(exc))
     except HTTPException:
         raise
     except Exception:
         logger.exception("Internal calculation error")
-        raise HTTPException(status_code=500, detail="Internal calculation error")
+        raise_internal_error("run flowsheet calculation by scenario")
