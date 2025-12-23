@@ -1,6 +1,12 @@
 import uuid
 
 from app import models
+from app.core.exceptions import (
+    raise_bad_request,
+    raise_internal_error,
+    raise_not_found,
+    raise_permission_denied,
+)
 from app.db import get_db
 from app.routers.auth import get_current_user, get_current_user_optional
 from app.schemas import (
@@ -34,7 +40,7 @@ from app.services.run_metrics import (
     find_best_project_run,
     is_grind_mvp_run,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -85,10 +91,10 @@ def _ensure_project_exists_and_get(db: Session, project_id) -> models.Project:
     try:
         project_pk = int(project_id)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        raise_not_found("Project", project_id, f"Invalid project ID format: '{project_id}'")
     project = db.get(models.Project, project_pk)
     if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        raise_not_found("Project", project_pk)
     return project
 
 
@@ -319,7 +325,7 @@ def _check_project_read_access(
     if project.owner_user_id is None:
         return
     if user is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+        raise_permission_denied(action=f"view project '{project.name}' (login required)")
     if project.owner_user_id == user.id:
         return
     membership = (
@@ -330,7 +336,7 @@ def _check_project_read_access(
         .first()
     )
     if membership is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+        raise_permission_denied(action=f"view project '{project.name}'")
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
@@ -401,10 +407,7 @@ def seed_demo_project(
         seed_grind_mvp_runs(db, projects, demo_versions)
 
     if not projects:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create demo project",
-        )
+        raise_internal_error("create demo project")
 
     project = projects[0]
     db.refresh(project)
@@ -424,7 +427,7 @@ def attach_flowsheet_version_to_project(
 ):
     project = _ensure_project_exists_and_get(db, project_id)
     if project.owner_user_id != getattr(current_user, "id", None):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+        raise_permission_denied(action=f"attach flowsheet version to project '{project.name}'")
 
     attach_link_to_project(db, project.id, flowsheet_version_id, project=project)
     db.refresh(project)
@@ -445,9 +448,12 @@ def get_latest_grind_mvp_run_for_project_and_version(
     _check_project_read_access(db, project, current_user)
     run = _find_latest_grind_mvp_run(db, project.id, flowsheet_version_id)
     if run is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No grind_mvp_v1 runs found for this project and flowsheet version",
+        raise_not_found(
+            "GrindMVP run",
+            message=(
+                f"No grind_mvp_v1 runs found for project '{project.name}' "
+                f"and flowsheet version '{flowsheet_version_id}'"
+            ),
         )
     return _build_grind_mvp_summary(run)
 
@@ -482,7 +488,7 @@ def detach_flowsheet_version_from_project(
 ):
     project = _ensure_project_exists_and_get(db, project_id)
     if project.owner_user_id != getattr(current_user, "id", None):
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+        raise_permission_denied(action=f"detach flowsheet version from project '{project.name}'")
 
     link = (
         db.query(models.ProjectFlowsheetVersion)
@@ -673,15 +679,13 @@ def add_project_member(
 ) -> ProjectMemberRead:
     project = _ensure_project_exists_and_get(db, project_id)
     if project.owner_user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+        raise_permission_denied(action=f"add members to project '{project.name}'")
 
     user = db.query(models.User).filter(models.User.email == payload.email).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise_not_found("User", payload.email, f"User with email '{payload.email}' not found")
     if user.id == project.owner_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="User is already the project owner"
-        )
+        raise_bad_request(f"User '{payload.email}' is already the project owner")
 
     existing = (
         db.query(models.ProjectMember)
@@ -718,7 +722,7 @@ def remove_project_member(
 ):
     project = _ensure_project_exists_and_get(db, project_id)
     if project.owner_user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+        raise_permission_denied(action=f"remove members from project '{project.name}'")
 
     membership = (
         db.query(models.ProjectMember)
@@ -728,9 +732,7 @@ def remove_project_member(
         .first()
     )
     if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project member not found"
-        )
+        raise_not_found("Project member", user_id)
 
     db.delete(membership)
     db.commit()
@@ -749,7 +751,9 @@ def get_project_dashboard(
 ) -> ProjectDashboardResponse:
     project = _ensure_project_exists_and_get(db, project_id)
     if current_user is None and project.owner_user_id is not None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Login required")
+        raise_permission_denied(
+            action=f"view dashboard for project '{project.name}' (login required)"
+        )
 
     # Get project flowsheet version links with joinedload to avoid N+1
     links = (
