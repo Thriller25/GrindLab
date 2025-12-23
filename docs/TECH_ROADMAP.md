@@ -127,7 +127,7 @@ User (пользователь)
 | # | Задача | Приоритет | Статус | Ответственный |
 |---|--------|-----------|--------|---------------|
 | 1.1 | Пагинация в list endpoints | 🔴 High | ✅ Done | AI |
-| 1.2 | N+1 query оптимизация (joinedload) | 🔴 High | 📋 TODO | - |
+| 1.2 | N+1 query оптимизация (joinedload) | 🔴 High | ✅ Done | AI |
 | 1.3 | Enum для статусов (CalcRunStatus, etc) | 🟡 Medium | ✅ Done | AI |
 | 1.4 | Pre-commit hooks (black, flake8) | 🟡 Medium | ✅ Done | AI |
 | 1.5 | .env.example файл | 🟢 Low | ✅ Done | AI |
