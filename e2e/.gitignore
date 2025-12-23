@@ -1,0 +1,5 @@
+# E2E Test Results
+node_modules/
+playwright-report/
+test-results/
+.cache/
