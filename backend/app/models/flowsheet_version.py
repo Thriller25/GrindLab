@@ -1,10 +1,10 @@
 import uuid
-from sqlalchemy import Column, String, Text, Boolean, DateTime, func, ForeignKey
+
+from app.db import Base
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
-
-from app.db import Base
 
 
 class FlowsheetVersion(Base):
@@ -13,7 +13,8 @@ class FlowsheetVersion(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     flowsheet_id = Column(UUID(as_uuid=True), ForeignKey("flowsheet.id"), nullable=False)
     version_label = Column(String(64), nullable=False)
-    status = Column(String(32), nullable=False, default="DRAFT")
+    # Status stored as string, but should be one of: DRAFT, ACTIVE, ARCHIVED
+    status = Column(String(16), nullable=False, default="DRAFT")
     is_active = Column(Boolean, nullable=False, default=False)
     comment = Column(Text, nullable=True)
     created_by = Column(UUID(as_uuid=True), nullable=True)
@@ -27,6 +28,5 @@ class FlowsheetVersion(Base):
         "ProjectFlowsheetVersion",
         back_populates="flowsheet_version",
         cascade="all, delete-orphan",
-        overlaps="projects,flowsheet_versions,project,project_links",
     )
     projects = association_proxy("project_links", "project")

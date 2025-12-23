@@ -1,19 +1,25 @@
 import uuid
-from typing import List
 
+from app import models
+from app.db import get_db
+from app.schemas import FlowsheetCreate, FlowsheetRead, FlowsheetUpdate, PaginatedResponse
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
-from app.db import get_db
-from app import models
-from app.schemas import FlowsheetCreate, FlowsheetRead, FlowsheetUpdate
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[FlowsheetRead])
-def list_flowsheets(db: Session = Depends(get_db)):
-    return db.query(models.Flowsheet).all()
+@router.get("/", response_model=PaginatedResponse[FlowsheetRead])
+def list_flowsheets(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    query = db.query(models.Flowsheet)
+    total = query.count()
+    items = query.offset(skip).limit(limit).all()
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.get("/{flowsheet_id}", response_model=FlowsheetRead)
@@ -34,7 +40,9 @@ def create_flowsheet(payload: FlowsheetCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{flowsheet_id}", response_model=FlowsheetRead)
-def update_flowsheet(flowsheet_id: uuid.UUID, payload: FlowsheetUpdate, db: Session = Depends(get_db)):
+def update_flowsheet(
+    flowsheet_id: uuid.UUID, payload: FlowsheetUpdate, db: Session = Depends(get_db)
+):
     obj = db.query(models.Flowsheet).get(flowsheet_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flowsheet not found")

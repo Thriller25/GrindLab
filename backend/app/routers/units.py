@@ -1,26 +1,33 @@
 import uuid
-from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-
-from app.db import get_db
 from app import models
-from app.schemas import UnitCreate, UnitRead, UnitUpdate
+from app.core.exceptions import raise_not_found
+from app.db import get_db
+from app.schemas import PaginatedResponse, UnitCreate, UnitRead, UnitUpdate
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[UnitRead])
-def list_units(db: Session = Depends(get_db)):
-    return db.query(models.Unit).all()
+@router.get("/", response_model=PaginatedResponse[UnitRead])
+def list_units(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    query = db.query(models.Unit)
+    total = query.count()
+    items = query.offset(skip).limit(limit).all()
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.get("/{unit_id}", response_model=UnitRead)
 def get_unit(unit_id: uuid.UUID, db: Session = Depends(get_db)):
     obj = db.query(models.Unit).get(unit_id)
     if not obj:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+        raise_not_found("Unit", unit_id)
     return obj
 
 
@@ -37,7 +44,7 @@ def create_unit(payload: UnitCreate, db: Session = Depends(get_db)):
 def update_unit(unit_id: uuid.UUID, payload: UnitUpdate, db: Session = Depends(get_db)):
     obj = db.query(models.Unit).get(unit_id)
     if not obj:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+        raise_not_found("Unit", unit_id)
     for field, value in payload.dict(exclude_unset=True).items():
         setattr(obj, field, value)
     db.commit()
@@ -49,7 +56,7 @@ def update_unit(unit_id: uuid.UUID, payload: UnitUpdate, db: Session = Depends(g
 def delete_unit(unit_id: uuid.UUID, db: Session = Depends(get_db)):
     obj = db.query(models.Unit).get(unit_id)
     if not obj:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+        raise_not_found("Unit", unit_id)
     obj.is_active = False
     db.commit()
     return None

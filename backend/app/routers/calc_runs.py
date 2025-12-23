@@ -2,32 +2,33 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from app import models
 from app.db import get_db
+from app.routers.auth import get_current_user
+from app.schemas.calc_io import CalcInput, CalcResultSummary
 from app.schemas.calc_run import (
     CalcRunCompareResponse,
-    CalcRunComparisonItem,
     CalcRunCompareWithBaselineItem,
     CalcRunCompareWithBaselineResponse,
+    CalcRunComparisonItem,
     CalcRunDelta,
     CalcRunListItem,
     CalcRunListResponse,
     CalcRunRead,
 )
-from app.schemas.calc_io import CalcInput, CalcResultSummary
 from app.services.calc_service import get_calc_scenario_or_404, get_flowsheet_version_or_404
-from app.routers.auth import get_current_user
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
 router = APIRouter(prefix="/api/calc-runs", tags=["calc-runs"])
 
 
 def _to_comparison_item(run: models.CalcRun) -> CalcRunComparisonItem:
     input_model = CalcInput.model_validate(run.input_json)
-    result_model = CalcResultSummary.model_validate(run.result_json) if run.result_json is not None else None
+    result_model = (
+        CalcResultSummary.model_validate(run.result_json) if run.result_json is not None else None
+    )
     return CalcRunComparisonItem(
         id=run.id,
         scenario_id=run.scenario_id,
@@ -39,7 +40,9 @@ def _to_comparison_item(run: models.CalcRun) -> CalcRunComparisonItem:
     )
 
 
-def _compute_deltas(baseline: CalcRunComparisonItem, run_item: CalcRunComparisonItem) -> CalcRunDelta:
+def _compute_deltas(
+    baseline: CalcRunComparisonItem, run_item: CalcRunComparisonItem
+) -> CalcRunDelta:
     if baseline.result is None or run_item.result is None:
         return CalcRunDelta()
 
@@ -50,19 +53,25 @@ def _compute_deltas(baseline: CalcRunComparisonItem, run_item: CalcRunComparison
 
     b_res = baseline.result
     r_res = run_item.result
-    throughput_delta_abs = r_res.throughput_tph - b_res.throughput_tph if r_res.throughput_tph is not None else None
+    throughput_delta_abs = (
+        r_res.throughput_tph - b_res.throughput_tph if r_res.throughput_tph is not None else None
+    )
     specific_energy_delta_abs = (
         r_res.specific_energy_kwh_per_t - b_res.specific_energy_kwh_per_t
         if r_res.specific_energy_kwh_per_t is not None
         else None
     )
-    p80_out_delta_abs = r_res.p80_out_microns - b_res.p80_out_microns if r_res.p80_out_microns is not None else None
+    p80_out_delta_abs = (
+        r_res.p80_out_microns - b_res.p80_out_microns if r_res.p80_out_microns is not None else None
+    )
 
     return CalcRunDelta(
         throughput_delta_abs=throughput_delta_abs,
         throughput_delta_pct=pct_delta(b_res.throughput_tph, r_res.throughput_tph),
         specific_energy_delta_abs=specific_energy_delta_abs,
-        specific_energy_delta_pct=pct_delta(b_res.specific_energy_kwh_per_t, r_res.specific_energy_kwh_per_t),
+        specific_energy_delta_pct=pct_delta(
+            b_res.specific_energy_kwh_per_t, r_res.specific_energy_kwh_per_t
+        ),
         p80_out_delta_abs=p80_out_delta_abs,
         p80_out_delta_pct=pct_delta(b_res.p80_out_microns, r_res.p80_out_microns),
     )
@@ -79,12 +88,18 @@ def list_calc_runs(
     status: Optional[str] = None,
     scenario_id: Optional[uuid.UUID] = None,
     scenario_query: Optional[str] = Query(None, description="Substring to match in scenario_name"),
-    started_from: Optional[datetime] = Query(None, description="Lower bound for started_at (inclusive)"),
-    started_to: Optional[datetime] = Query(None, description="Upper bound for started_at (inclusive)"),
+    started_from: Optional[datetime] = Query(
+        None, description="Lower bound for started_at (inclusive)"
+    ),
+    started_to: Optional[datetime] = Query(
+        None, description="Upper bound for started_at (inclusive)"
+    ),
     db: Session = Depends(get_db),
 ) -> CalcRunListResponse:
     get_flowsheet_version_or_404(db, flowsheet_version_id)
-    query = db.query(models.CalcRun).filter(models.CalcRun.flowsheet_version_id == flowsheet_version_id)
+    query = db.query(models.CalcRun).filter(
+        models.CalcRun.flowsheet_version_id == flowsheet_version_id
+    )
     if status:
         query = query.filter(models.CalcRun.status == status)
     if scenario_id:
@@ -117,11 +132,22 @@ def get_my_calc_runs(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> CalcRunListResponse:
-    query = db.query(models.CalcRun).filter(models.CalcRun.started_by_user_id == current_user.id)
+    # Start with base query
+    base_query = db.query(models.CalcRun).filter(
+        models.CalcRun.started_by_user_id == current_user.id
+    )
     if status:
-        query = query.filter(models.CalcRun.status == status)
+        base_query = base_query.filter(models.CalcRun.status == status)
 
-    total = query.with_entities(func.count()).scalar() or 0
+    # Count before joinedload
+    total = base_query.with_entities(func.count()).scalar() or 0
+
+    # Apply joinedload
+    query = base_query.options(
+        joinedload(models.CalcRun.project),
+        joinedload(models.CalcRun.scenario),
+    )
+
     runs = (
         query.order_by(models.CalcRun.started_at.desc().nullslast())
         .offset(offset)
@@ -138,18 +164,29 @@ def get_my_calc_runs(
 )
 def get_latest_calc_run_by_scenario(
     scenario_id: uuid.UUID,
-    status: Optional[str] = Query("success", description="Optional status filter, default 'success'"),
+    status: Optional[str] = Query(
+        "success", description="Optional status filter, default 'success'"
+    ),
     db: Session = Depends(get_db),
 ) -> CalcRunRead:
     get_calc_scenario_or_404(db, scenario_id)
 
-    query = db.query(models.CalcRun).filter(models.CalcRun.scenario_id == scenario_id)
+    query = (
+        db.query(models.CalcRun)
+        .options(
+            joinedload(models.CalcRun.project),
+            joinedload(models.CalcRun.scenario),
+        )
+        .filter(models.CalcRun.scenario_id == scenario_id)
+    )
     if status is not None:
         query = query.filter(models.CalcRun.status == status)
 
     calc_run = query.order_by(models.CalcRun.started_at.desc().nullslast()).limit(1).first()
     if calc_run is None:
-        raise HTTPException(status_code=404, detail=f"No calc runs found for scenario {scenario_id}")
+        raise HTTPException(
+            status_code=404, detail=f"No calc runs found for scenario {scenario_id}"
+        )
 
     return CalcRunRead.model_validate(calc_run, from_attributes=True)
 
@@ -176,7 +213,11 @@ def compare_calc_runs(
     items: list[CalcRunComparisonItem] = []
     for run in ordered_runs:
         input_model = CalcInput.model_validate(run.input_json)
-        result_model = CalcResultSummary.model_validate(run.result_json) if run.result_json is not None else None
+        result_model = (
+            CalcResultSummary.model_validate(run.result_json)
+            if run.result_json is not None
+            else None
+        )
         items.append(
             CalcRunComparisonItem(
                 id=run.id,
