@@ -142,7 +142,7 @@ User (пользователь)
 | # | Задача | Приоритет | Статус |
 |---|--------|-----------|--------|
 | 2.1 | Docker / docker-compose | 🔴 High | ✅ Done |
-| 2.2 | CI/CD pipeline (GitHub Actions) | 🔴 High | 📋 TODO |
+| 2.2 | CI/CD pipeline (GitHub Actions) | 🔴 High | ✅ Done |
 | 2.3 | PostgreSQL production setup | 🔴 High | ✅ Done |
 | 2.4 | Structured logging (JSON) | 🟡 Medium | 📋 TODO |
 | 2.5 | Health checks / monitoring | 🟡 Medium | ✅ Done |
