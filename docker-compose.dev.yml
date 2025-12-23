@@ -1,0 +1,26 @@
+# GrindLab Docker Compose - Development Override
+# Use: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  backend:
+    build:
+      target: builder  # Use builder stage for dev (includes dev dependencies)
+    environment:
+    - DEBUG=true
+    volumes:
+      # Mount source code with write access for hot reload
+    - ./backend/app:/app/app
+    - ./backend/migrations:/app/migrations
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+    - ./frontend/src:/app/src
+    - ./frontend/public:/app/public
+    - ./frontend/index.html:/app/index.html
+    ports:
+    - 5173:5173
+    command: [npm, run, dev, --, --host, 0.0.0.0]

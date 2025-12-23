@@ -1,0 +1,84 @@
+# GrindLab Docker Compose Configuration
+# For local development and testing
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: grindlab-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-grindlab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grindlab_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-grindlab}
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    ports:
+    - 5432:5432
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U ${POSTGRES_USER:-grindlab} -d ${POSTGRES_DB:-grindlab}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: grindlab-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+    - DATABASE_URL=postgresql://${POSTGRES_USER:-grindlab}:${POSTGRES_PASSWORD:-grindlab_secret}@db:5432/${POSTGRES_DB:-grindlab}
+    - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+    - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:5173}
+    - DEBUG=${DEBUG:-false}
+    ports:
+    - 8000:8000
+    volumes:
+      # Mount source code for development (hot reload)
+    - ./backend/app:/app/app:ro
+    healthcheck:
+      test: curl -f http://localhost:8000/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Frontend (React + Vite -> Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: grindlab-frontend
+    restart: unless-stopped
+    depends_on:
+    - backend
+    ports:
+    - 80:80
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Adminer - Database management UI (optional, dev only)
+  adminer:
+    image: adminer:latest
+    container_name: grindlab-adminer
+    restart: unless-stopped
+    depends_on:
+    - db
+    ports:
+    - 8080:8080
+    profiles:
+    - dev
+
+volumes:
+  postgres_data:
+    name: grindlab-postgres-data
