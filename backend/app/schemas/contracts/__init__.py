@@ -1,6 +1,7 @@
 # F0.2 — Data Contracts (материал, PSD, KPI, поток)
 # F3.3 — PSD Core (bins, rebin, операции)
 # F3.1 — Import Parsers (CSV, JSON, Excel)
+# F3.2 — Material Validation (валидация, паспорт)
 # Версионируемые JSON-схемы для обмена данными между модулями
 
 from .blast import Blast, BlastBlock, BlastSource, BlastStatus, GeoLocation
@@ -31,6 +32,22 @@ from .kpi import (
     throughput_kpi,
 )
 from .material import Material, MaterialComponent, MaterialPhase, MaterialQuality
+from .material_validation import (
+    CompletenessLevel,
+    MaterialPassport,
+    MaterialValidator,
+    PSDMetrics,
+    PSDQuality,
+    ValidationCategory,
+    ValidationIssue,
+    ValidationResult,
+    ValidationSeverity,
+    compute_psd_metrics,
+    generate_passport,
+    get_material_passport,
+    is_material_valid,
+    validate_material,
+)
 from .psd import PSD, PSDInterpolation, PSDPoint, PSDQuantiles, PSDStats
 from .psd_ops import (
     FLOTATION_FINE_SERIES,
@@ -81,6 +98,21 @@ __all__ = [
     "MaterialComponent",
     "MaterialQuality",
     "MaterialPhase",
+    # Material Validation (F3.2)
+    "MaterialValidator",
+    "MaterialPassport",
+    "ValidationResult",
+    "ValidationIssue",
+    "ValidationSeverity",
+    "ValidationCategory",
+    "CompletenessLevel",
+    "PSDQuality",
+    "PSDMetrics",
+    "validate_material",
+    "is_material_valid",
+    "generate_passport",
+    "get_material_passport",
+    "compute_psd_metrics",
     # Stream
     "Stream",
     "StreamType",
