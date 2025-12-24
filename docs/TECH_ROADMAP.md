@@ -68,7 +68,7 @@ Backend:          Frontend:
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
 | F0.1 | MVP Scope & Release Plan | Product | P0 | ✅ Done |
-| F0.2 | Data Contracts: Material/PSD/Blast/KPI | Backend+Core | P0 | 📋 TODO |
+| F0.2 | Data Contracts: Material/PSD/Blast/KPI | Backend+Core | P0 | ✅ Done |
 | F0.3 | ADR: архитектурные решения | Engineering | P1 | 📋 TODO |
 
 #### EP1: Auth (Keycloak) + RBAC/ACL (S1)
