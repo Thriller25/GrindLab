@@ -1,8 +1,24 @@
 # F0.2 — Data Contracts (материал, PSD, KPI, поток)
 # F3.3 — PSD Core (bins, rebin, операции)
+# F3.1 — Import Parsers (CSV, JSON, Excel)
 # Версионируемые JSON-схемы для обмена данными между модулями
 
 from .blast import Blast, BlastBlock, BlastSource, BlastStatus, GeoLocation
+from .import_parsers import (
+    TYLER_MESH_TO_MM,
+    ImportFormat,
+    ImportMetadata,
+    ImportResult,
+    MultiImportResult,
+    import_psd,
+    parse_csv_multi,
+    parse_csv_retained,
+    parse_csv_simple,
+    parse_csv_tyler,
+    parse_json_material,
+    parse_json_psd,
+    tyler_mesh_to_mm,
+)
 from .kpi import (
     KPI,
     KPICollection,
@@ -85,4 +101,18 @@ __all__ = [
     "BlastSource",
     "BlastStatus",
     "GeoLocation",
+    # Import Parsers (F3.1)
+    "ImportFormat",
+    "ImportMetadata",
+    "ImportResult",
+    "MultiImportResult",
+    "import_psd",
+    "parse_csv_simple",
+    "parse_csv_retained",
+    "parse_csv_tyler",
+    "parse_csv_multi",
+    "parse_json_psd",
+    "parse_json_material",
+    "tyler_mesh_to_mm",
+    "TYLER_MESH_TO_MM",
 ]

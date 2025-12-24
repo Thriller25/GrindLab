@@ -1,0 +1,63 @@
+{
+  "interpolation": "log_linear",
+  "name": "Cyclone Overflow - Fine Product",
+  "points": [
+    {
+      "cum_passing": 100.0,
+      "size_mm": 0.3
+    },
+    {
+      "cum_passing": 99.2,
+      "size_mm": 0.212
+    },
+    {
+      "cum_passing": 97.5,
+      "size_mm": 0.15
+    },
+    {
+      "cum_passing": 94.2,
+      "size_mm": 0.106
+    },
+    {
+      "cum_passing": 88.5,
+      "size_mm": 0.075
+    },
+    {
+      "cum_passing": 80.2,
+      "size_mm": 0.053
+    },
+    {
+      "cum_passing": 74.1,
+      "size_mm": 0.045
+    },
+    {
+      "cum_passing": 67.8,
+      "size_mm": 0.038
+    },
+    {
+      "cum_passing": 55.2,
+      "size_mm": 0.025
+    },
+    {
+      "cum_passing": 48.5,
+      "size_mm": 0.02
+    },
+    {
+      "cum_passing": 40.2,
+      "size_mm": 0.015
+    },
+    {
+      "cum_passing": 30.5,
+      "size_mm": 0.01
+    },
+    {
+      "cum_passing": 18.2,
+      "size_mm": 0.005
+    },
+    {
+      "cum_passing": 8.5,
+      "size_mm": 0.002
+    }
+  ],
+  "source": "Lab laser diffraction"
+}
