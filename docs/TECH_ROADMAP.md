@@ -89,7 +89,7 @@ Backend:          Frontend:
 #### EP3: Materials & Ingestion (S2-S3)
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
-| F3.1 | Импорт Material из файла | Backend+Frontend | P0 | 📋 TODO |
+| F3.1 | Импорт Material из файла | Backend+Frontend | P0 | ✅ Done |
 | F3.2 | Валидация + паспорт материала | Backend | P0 | 📋 TODO |
 | F3.3 | PSD core: bins + rebin + Pxx | Core | P0 | ✅ Done |
 | F3.4 | Блендинг материалов | Backend+Core | P1 | 📋 TODO |
