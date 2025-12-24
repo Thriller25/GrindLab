@@ -1,0 +1,86 @@
+﻿Card ID | Epic ID | Epic | Type | Title | Component | Priority | Status | Owner | Sprint
+EP0 | EP0 | Foundations (границы, контракты, ADR) | Epic | Foundations (границы, контракты, ADR) | Product | P0 | Backlog |  | S0
+EP1 | EP1 | Auth (Keycloak) + RBAC/ACL | Epic | Auth (Keycloak) + RBAC/ACL | Product | P0 | Backlog |  | S1
+EP2 | EP2 | Проекты + версионирование + аудит | Epic | Проекты + версионирование + аудит | Product | P0 | Backlog |  | S1
+EP3 | EP3 | Materials & Ingestion (включая Blast) | Epic | Materials & Ingestion (включая Blast) | Product | P0 | Backlog |  | S2
+EP4 | EP4 | Flowsheet Designer (MVP) | Epic | Flowsheet Designer (MVP) | Product | P0 | Backlog |  | S3
+EP5 | EP5 | Solver / Simulation Core | Epic | Solver / Simulation Core | Product | P0 | Backlog |  | S4
+EP6 | EP6 | Calibration & Validation (MVP) | Epic | Calibration & Validation (MVP) | Product | P0 | Backlog |  | S5
+EP7 | EP7 | What-if & Compare | Epic | What-if & Compare | Product | P0 | Backlog |  | S5
+EP8 | EP8 | Visualization & Reporting | Epic | Visualization & Reporting | Product | P0 | Backlog |  | S4
+EP9 | EP9 | Platform (DB/Migrations/Observability/CI) | Epic | Platform (DB/Migrations/Observability/CI) | Product | P0 | Backlog |  | S0
+F0.1 | EP0 | Foundations (границы, контракты, ADR) | Feature | MVP Scope & Release Plan | Product | P0 | Backlog |  | S0
+F0.2 | EP0 | Foundations (границы, контракты, ADR) | Feature | Data Contracts: Material/PSD/Blast/KPI | Backend+Core | P0 | Backlog |  | S0
+F0.3 | EP0 | Foundations (границы, контракты, ADR) | Feature | ADR: архитектурные решения | Product+Engineering | P1 | Backlog |  | S0
+F1.1 | EP1 | Auth (Keycloak) + RBAC/ACL | Feature | Keycloak docker-compose + realm import | DevOps+Backend | P0 | Backlog |  | S1
+F1.2 | EP1 | Auth (Keycloak) + RBAC/ACL | Feature | UI: OIDC login/logout (Auth Code + PKCE) | Frontend | P0 | Backlog |  | S1
+F1.3 | EP1 | Auth (Keycloak) + RBAC/ACL | Feature | Backend: JWT validation (JWKS) + RBAC | Backend | P0 | Backlog |  | S1
+F1.4 | EP1 | Auth (Keycloak) + RBAC/ACL | Feature | ACL на проекты (membership) | Backend+DB+Frontend | P0 | Backlog |  | S1
+F2.1 | EP2 | Проекты + версионирование + аудит | Feature | Project CRUD (API + UI) | Backend+Frontend | P0 | Backlog |  | S1
+F2.2 | EP2 | Проекты + версионирование + аудит | Feature | Versioning model (immutable artifacts) | Backend+DB | P0 | Backlog |  | S2
+F2.3 | EP2 | Проекты + версионирование + аудит | Feature | Change Log / Audit minimal | Backend+DB | P1 | Backlog |  | S2
+F3.1 | EP3 | Materials & Ingestion (включая Blast) | Feature | Импорт Material из файла (CSV/XLSX/JSON) | Backend+Frontend | P0 | Backlog |  | S2
+F3.2 | EP3 | Materials & Ingestion (включая Blast) | Feature | Валидация + паспорт материала | Backend | P0 | Backlog |  | S2
+F3.3 | EP3 | Materials & Ingestion (включая Blast) | Feature | PSD core: bins + rebin + Pxx (включая P240) | Core | P0 | Backlog |  | S2
+F3.4 | EP3 | Materials & Ingestion (включая Blast) | Feature | Блендинг материалов | Backend+Core | P1 | Backlog |  | S3
+F3.5 | EP3 | Materials & Ingestion (включая Blast) | Feature | Импорт Blast → Material (adapter) | Backend | P1 | Backlog |  | S3
+F4.1 | EP4 | Flowsheet Designer (MVP) | Feature | Flowsheet editor: граф узлов и потоков | Frontend+Backend | P0 | Backlog |  | S3
+F4.2 | EP4 | Flowsheet Designer (MVP) | Feature | Node Library MVP (Crusher/Mill/Cyclone/Screen/Splitter/Mixer) | Core+Frontend | P0 | Backlog |  | S3
+F4.3 | EP4 | Flowsheet Designer (MVP) | Feature | Flowsheet validation rules | Backend+Core | P0 | Backlog |  | S3
+F4.4 | EP4 | Flowsheet Designer (MVP) | Feature | Назначение MaterialVersion на feed | Frontend+Backend | P0 | Backlog |  | S3
+F5.1 | EP5 | Solver / Simulation Core | Feature | Execution engine + convergence | Core | P0 | Backlog |  | S4
+F5.2 | EP5 | Solver / Simulation Core | Feature | KPI computation (throughput, kWh/t, P80/P50/P240, CL) | Core | P0 | Backlog |  | S4
+F5.3 | EP5 | Solver / Simulation Core | Feature | Run management (RunVersion) | Backend+DB | P0 | Backlog |  | S4
+F6.1 | EP6 | Calibration & Validation (MVP) | Feature | Calibration dataset management | Backend+Frontend | P1 | Backlog |  | S5
+F6.2 | EP6 | Calibration & Validation (MVP) | Feature | Calibration engine (MVP optimizer) | Core | P1 | Backlog |  | S5
+F6.3 | EP6 | Calibration & Validation (MVP) | Feature | Calibration report (metrics + plots) | Backend+Frontend | P1 | Backlog |  | S5
+F7.1 | EP7 | What-if & Compare | Feature | Scenario builder (what-if) | Frontend+Backend | P1 | Backlog |  | S5
+F7.2 | EP7 | What-if & Compare | Feature | Batch runs for scenarios | Backend+Core | P1 | Backlog |  | S5
+F7.3 | EP7 | What-if & Compare | Feature | Compare dashboard (baseline vs scenarios) | Frontend | P1 | Backlog |  | S5
+F8.1 | EP8 | Visualization & Reporting | Feature | PSD plots (включая P240) | Frontend | P0 | Backlog |  | S4
+F8.2 | EP8 | Visualization & Reporting | Feature | Fact vs Model plots (calibration) | Frontend | P1 | Backlog |  | S5
+F8.3 | EP8 | Visualization & Reporting | Feature | Scenario comparison plots | Frontend | P1 | Backlog |  | S5
+F8.4 | EP8 | Visualization & Reporting | Feature | Export package (PNG + CSV/Excel) with version metadata | Backend+Frontend | P1 | Backlog |  | S5
+F9.1 | EP9 | Platform (DB/Migrations/Observability/CI) | Feature | DB schema + migrations (PostgreSQL) | DB+Backend | P0 | Backlog |  | S0
+F9.2 | EP9 | Platform (DB/Migrations/Observability/CI) | Feature | Audit log minimal (technical) | Backend | P1 | Backlog |  | S2
+F9.3 | EP9 | Platform (DB/Migrations/Observability/CI) | Feature | Health checks + logging + error handling | Backend+DevOps | P0 | Backlog |  | S2
+F9.4 | EP9 | Platform (DB/Migrations/Observability/CI) | Feature | CI smoke (build + tests + minimal run) | DevOps | P0 | Backlog |  | S0
+EP10 | EP10 | INKA/DataHub Integration | Epic | INKA/DataHub Integration | Product+Engineering | P1 | Backlog |  | S7
+EP11 | EP11 | Compute Platform (Jobs/Queue/Scaling) | Epic | Compute Platform | Product+Engineering | P0 | Backlog |  | S6
+EP12 | EP12 | Online Twin (Streaming + Real-time) | Epic | Online Twin | Product+Engineering | P1 | Backlog |  | S10
+EP13 | EP13 | Recommendations & Feedback | Epic | Recommendation Engine | Product+Engineering | P1 | Backlog |  | S11
+EP14 | EP14 | Economic Layer | Epic | Экономический слой | Product+Engineering | P1 | Backlog |  | S12
+EP15 | EP15 | Enterprise Outputs & Approvals | Epic | Enterprise Outputs | Product+Engineering | P2 | Backlog |  | S12
+EP16 | EP16 | Security & Operations Hardening | Epic | Security & Operations | Product+Engineering | P0 | Backlog |  | S6
+EP17 | EP17 | Extensibility & Model Library | Epic | Extensibility & Models | Product+Engineering | P1 | Backlog |  | S6
+F11.1 | EP11 | Compute Platform (Jobs/Queue/Scaling) | Feature | Job Queue + Worker Framework (Redis/Celery/RQ) | Backend+DevOps | P0 | Backlog |  | S6
+F11.2 | EP11 | Compute Platform (Jobs/Queue/Scaling) | Feature | Retries + Idempotency + Job Orchestrator | Backend+DevOps | P0 | Backlog |  | S6
+F11.5 | EP11 | Compute Platform (Jobs/Queue/Scaling) | Feature | Artifacts Storage in MinIO/S3 | DevOps+Backend | P1 | Backlog |  | S6
+F16.2 | EP16 | Security & Operations Hardening | Feature | Security Hardening (Secrets, CSP, WAF-ready) | DevOps+Backend | P0 | Backlog |  | S6
+F16.3 | EP16 | Security & Operations Hardening | Feature | Backup/Restore + DR baseline | DevOps+DB | P0 | Backlog |  | S6
+F17.3 | EP17 | Extensibility & Model Library | Feature | Regression Suite + Golden Benchmarks | Backend+Core | P1 | Backlog |  | S6
+F10.1 | EP10 | INKA/DataHub Integration | Feature | INKA Contract (Schemas + API) | Product+Engineering | P1 | Backlog |  | S7
+F10.2 | EP10 | INKA/DataHub Integration | Feature | Connector Framework + Initial Connectors | Backend+DevOps | P1 | Backlog |  | S7
+F10.3 | EP10 | INKA/DataHub Integration | Feature | Data Passport & Data Quality Rules (INKA-aware) | Product+Engineering | P1 | Backlog |  | S7
+F10.4 | EP10 | INKA/DataHub Integration | Feature | INKA → GrindLab Sync Jobs (Materials/Plans) | Backend+DevOps | P1 | Backlog |  | S8
+F10.5 | EP10 | INKA/DataHub Integration | Feature | Event-driven Subscriptions (Material Update Events) | Backend+DevOps | P2 | Backlog |  | S8
+F11.3 | EP11 | Compute Platform (Jobs/Queue/Scaling) | Feature | Kubernetes Jobs / Autoscaling (optional target) | DevOps | P2 | Backlog |  | S9
+F11.4 | EP11 | Compute Platform (Jobs/Queue/Scaling) | Feature | SLA/Priority Scheduling | Backend+DevOps | P2 | Backlog |  | S9
+F12.1 | EP12 | Online Twin (Streaming + Real-time) | Feature | Streaming Ingest Service (Kafka/Redpanda) | Backend+DevOps | P1 | Backlog |  | S10
+F12.2 | EP12 | Online Twin (Streaming + Real-time) | Feature | Real-time KPI Pipeline (micro-batch) | Backend+Core | P1 | Backlog |  | S10
+F12.4 | EP12 | Online Twin (Streaming + Real-time) | Feature | Live Dashboard + Alerts UI | Frontend+Backend | P2 | Backlog |  | S10
+F12.3 | EP12 | Online Twin (Streaming + Real-time) | Feature | Model State & Drift Monitoring | Core+Backend | P2 | Backlog |  | S12
+F13.1 | EP13 | Recommendations & Feedback | Feature | Rules Engine: Safe Operating Window | Core+Backend | P1 | Backlog |  | S11
+F13.2 | EP13 | Recommendations & Feedback | Feature | Feedback Loop (accept/reject + outcome) | Frontend+Backend | P1 | Backlog |  | S11
+F13.4 | EP13 | Recommendations & Feedback | Feature | Explainability + Audit for Recommendations | Product+Engineering | P2 | Backlog |  | S11
+F14.1 | EP14 | Economic Layer | Feature | Cost/Value Model (inputs + units + versioning) | Product+Engineering | P1 | Backlog |  | S12
+F14.2 | EP14 | Economic Layer | Feature | Economic KPIs (EBITDA proxy) + Reporting | Backend+Core | P1 | Backlog |  | S12
+F14.3 | EP14 | Economic Layer | Feature | Optimization with Economic Objective | Core+Backend | P2 | Backlog |  | S12
+F15.1 | EP15 | Enterprise Outputs & Approvals | Feature | BI Export (views/CSV/API) | Backend+DB | P2 | Backlog |  | S12
+F15.3 | EP15 | Enterprise Outputs & Approvals | Feature | Notifications (email/telegram/webhook) | Backend | P3 | Backlog |  | S12
+F15.4 | EP15 | Enterprise Outputs & Approvals | Feature | External API for ERP/Planning | Backend | P2 | Backlog |  | S12
+F16.1 | EP16 | Security & Operations Hardening | Feature | Multi-tenancy (Organizations/Workspaces) | Backend+DB | P2 | Backlog |  | S12
+F16.4 | EP16 | Security & Operations Hardening | Feature | Performance/Load Testing Suite | DevOps+Engineering | P2 | Backlog |  | S12
+F17.1 | EP17 | Extensibility & Model Library | Feature | Model Registry Full (Plugin SDK + Compatibility) | Backend+Core | P1 | Backlog |  | S12
+F17.2 | EP17 | Extensibility & Model Library | Feature | Unit Model Library Expansion | Core | P2 | Backlog |  | S12
+F17.4 | EP17 | Extensibility & Model Library | Feature | Model Governance Workflow (review/publish) | Product+Engineering | P2 | Backlog |  | S12
