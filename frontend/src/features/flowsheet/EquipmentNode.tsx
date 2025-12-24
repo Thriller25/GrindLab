@@ -169,3 +169,18 @@ function getPortColor(portType: string): string {
       return "#6b7280";
   }
 }
+
+/**
+ * Карта кастомных типов узлов для React Flow
+ */
+export const nodeTypes = {
+  feed: EquipmentNode,
+  jaw_crusher: EquipmentNode,
+  cone_crusher: EquipmentNode,
+  sag_mill: EquipmentNode,
+  ball_mill: EquipmentNode,
+  hydrocyclone: EquipmentNode,
+  vib_screen: EquipmentNode,
+  banana_screen: EquipmentNode,
+  product: EquipmentNode,
+};

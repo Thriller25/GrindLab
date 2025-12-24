@@ -21,7 +21,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { nodeTypes } from "./nodeTypes";
+import { nodeTypes } from "./EquipmentNode";
 import { NodePalette } from "./NodePalette";
 import { getEquipmentConfig } from "./equipmentConfig";
 import type { FlowsheetNode, FlowsheetEdge, EquipmentType } from "./types";

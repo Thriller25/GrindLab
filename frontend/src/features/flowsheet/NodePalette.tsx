@@ -6,6 +6,7 @@
 
 import { memo, DragEvent } from "react";
 import {
+  EQUIPMENT_CONFIGS,
   CATEGORY_LABELS,
   CATEGORY_COLORS,
   getEquipmentByCategory,
