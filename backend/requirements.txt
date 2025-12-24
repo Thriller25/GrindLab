@@ -38,6 +38,6 @@ structlog==24.4.0
 
 # Development tools
 pre-commit==4.0.1
-black==24.12.0
+black==24.10.0
 flake8==7.1.1
 isort==5.13.2
