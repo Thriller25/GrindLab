@@ -1,10 +1,9 @@
 import uuid
 
+from app.db import Base
 from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-
-from app.db import Base
 
 
 class Comment(Base):

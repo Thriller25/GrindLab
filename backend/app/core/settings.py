@@ -23,9 +23,9 @@ class Settings(BaseSettings):
 
     # Настройки pydantic-settings (v2)
     model_config = SettingsConfigDict(
-        env_file=".env",              # читаем переменные из .env
+        env_file=".env",  # читаем переменные из .env
         env_file_encoding="utf-8",
-        extra="ignore",               # игнорируем любые лишние переменные
+        extra="ignore",  # игнорируем любые лишние переменные
     )
 
 

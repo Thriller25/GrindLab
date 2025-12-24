@@ -1,13 +1,13 @@
 from datetime import datetime
-from typing import Dict, Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from app.schemas.project import ProjectRead
     from app.schemas.calc_run import CalcRunListItem
-    from app.schemas.comment import CommentRead
     from app.schemas.calc_scenario import CalcScenarioRead
+    from app.schemas.comment import CommentRead
+    from app.schemas.project import ProjectRead
 
 
 class UserBase(BaseModel):

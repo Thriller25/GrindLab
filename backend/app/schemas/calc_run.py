@@ -2,9 +2,8 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
-
 from app.schemas.calc_io import CalcInput, CalcResultSummary
+from pydantic import BaseModel
 
 
 class CalcRunCreate(BaseModel):

@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from app import models
@@ -8,34 +7,45 @@ DEMO_PREFIX = "DEMO_"
 
 
 def _clear_demo(session):
-    flowsheets = session.query(models.Flowsheet).filter(models.Flowsheet.name.like(f"{DEMO_PREFIX}%")).all()
+    flowsheets = (
+        session.query(models.Flowsheet).filter(models.Flowsheet.name.like(f"{DEMO_PREFIX}%")).all()
+    )
     flowsheet_ids = [fs.id for fs in flowsheets]
     version_ids = [
-        v.id for v in session.query(models.FlowsheetVersion.id).filter(models.FlowsheetVersion.flowsheet_id.in_(flowsheet_ids))
+        v.id
+        for v in session.query(models.FlowsheetVersion.id).filter(
+            models.FlowsheetVersion.flowsheet_id.in_(flowsheet_ids)
+        )
     ]
 
     if version_ids:
         session.query(models.ProjectFlowsheetVersion).filter(
             models.ProjectFlowsheetVersion.flowsheet_version_id.in_(version_ids)
         ).delete(synchronize_session=False)
-        session.query(models.CalcRun).filter(models.CalcRun.flowsheet_version_id.in_(version_ids)).delete(
-            synchronize_session=False
-        )
-        session.query(models.CalcScenario).filter(models.CalcScenario.flowsheet_version_id.in_(version_ids)).delete(
-            synchronize_session=False
-        )
+        session.query(models.CalcRun).filter(
+            models.CalcRun.flowsheet_version_id.in_(version_ids)
+        ).delete(synchronize_session=False)
+        session.query(models.CalcScenario).filter(
+            models.CalcScenario.flowsheet_version_id.in_(version_ids)
+        ).delete(synchronize_session=False)
         session.query(models.Unit).filter(models.Unit.flowsheet_version_id.in_(version_ids)).delete(
             synchronize_session=False
         )
-        session.query(models.FlowsheetVersion).filter(models.FlowsheetVersion.id.in_(version_ids)).delete(
+        session.query(models.FlowsheetVersion).filter(
+            models.FlowsheetVersion.id.in_(version_ids)
+        ).delete(synchronize_session=False)
+
+    if flowsheet_ids:
+        session.query(models.Flowsheet).filter(models.Flowsheet.id.in_(flowsheet_ids)).delete(
             synchronize_session=False
         )
 
-    if flowsheet_ids:
-        session.query(models.Flowsheet).filter(models.Flowsheet.id.in_(flowsheet_ids)).delete(synchronize_session=False)
-
-    session.query(models.Project).filter(models.Project.name.like(f"{DEMO_PREFIX}%")).delete(synchronize_session=False)
-    session.query(models.Plant).filter(models.Plant.name.like(f"{DEMO_PREFIX}%")).delete(synchronize_session=False)
+    session.query(models.Project).filter(models.Project.name.like(f"{DEMO_PREFIX}%")).delete(
+        synchronize_session=False
+    )
+    session.query(models.Plant).filter(models.Plant.name.like(f"{DEMO_PREFIX}%")).delete(
+        synchronize_session=False
+    )
     session.commit()
 
 
@@ -76,7 +86,9 @@ def seed_demo():
         session.add(project)
         session.flush()
 
-        link = models.ProjectFlowsheetVersion(project_id=project.id, flowsheet_version_id=version.id)
+        link = models.ProjectFlowsheetVersion(
+            project_id=project.id, flowsheet_version_id=version.id
+        )
         session.add(link)
         session.flush()
 
@@ -95,7 +107,11 @@ def seed_demo():
             units.append(unit)
         session.add_all(units)
 
-        base_input = {"feed_tph": 200.0, "target_p80_microns": 180.0, "model_version": "grind_mvp_v1"}
+        base_input = {
+            "feed_tph": 200.0,
+            "target_p80_microns": 180.0,
+            "model_version": "grind_mvp_v1",
+        }
         scenario_base = models.CalcScenario(
             flowsheet_version_id=version.id,
             project_id=project.id,
@@ -134,7 +150,8 @@ def seed_demo():
                     result_json={
                         "model_version": "grind_mvp_v1",
                         "kpi": {
-                            "throughput_tph": scenario.default_input_json.get("feed_tph", 0) + i * 5,
+                            "throughput_tph": scenario.default_input_json.get("feed_tph", 0)
+                            + i * 5,
                             "product_p80_mm": 0.18,
                             "specific_energy_kwh_per_t": 10.0 + i,
                             "circulating_load_percent": 250.0,

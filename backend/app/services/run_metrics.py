@@ -3,10 +3,9 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
+from app import models
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-
-from app import models
 
 
 def extract_model_version(run: models.CalcRun) -> Optional[str]:
@@ -76,5 +75,7 @@ def find_baseline_run_for_version(
             models.CalcRun.project_id == project_id,
             models.CalcScenario.project_id == project_id,
         )
-    runs = query.order_by(models.CalcRun.started_at.desc().nullslast(), models.CalcRun.created_at.desc()).all()
+    runs = query.order_by(
+        models.CalcRun.started_at.desc().nullslast(), models.CalcRun.created_at.desc()
+    ).all()
     return runs[0] if runs else None

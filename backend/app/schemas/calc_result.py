@@ -1,15 +1,16 @@
 from typing import List, Optional, Tuple
 
-from pydantic import BaseModel, Field
-
 from app.schemas.calc_io import CalcResultSummary
+from pydantic import BaseModel, Field
 
 
 class CalcResultStream(BaseModel):
     id: str
     name: Optional[str] = None
     mass_flow: Optional[float] = None
-    size_distribution: List[Tuple[float, float]] = Field(default_factory=list, description="(size_um, cumulative_pass_pct)")
+    size_distribution: List[Tuple[float, float]] = Field(
+        default_factory=list, description="(size_um, cumulative_pass_pct)"
+    )
     is_feed: bool = False
     is_product: bool = False
     p80_um: Optional[float] = None

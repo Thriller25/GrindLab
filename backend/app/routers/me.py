@@ -1,10 +1,9 @@
 import uuid
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends
-
 from app import models
 from app.routers.auth import get_current_user_optional
+from fastapi import APIRouter, Depends
 
 # Fallback anonymous identity for unauthenticated requests
 ANONYMOUS_EMAIL = "anonymous@grindlab.local"

@@ -3,9 +3,8 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from sqlalchemy.orm import Session
-
 from app import models
+from sqlalchemy.orm import Session
 
 
 def attach_flowsheet_version_to_project(

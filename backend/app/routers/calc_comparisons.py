@@ -1,9 +1,5 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from app import models
 from app.db import get_db
 from app.schemas import (
@@ -17,6 +13,9 @@ from app.schemas import (
 )
 from app.schemas.calc_io import CalcInput, CalcResultSummary
 from app.services.calc_service import get_flowsheet_version_or_404
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/calc-comparisons", tags=["calc-comparisons"])
 
@@ -37,7 +36,11 @@ def _build_compare_response(
     items: list[CalcRunComparisonItem] = []
     for run in ordered_runs:
         input_model = CalcInput.model_validate(run.input_json)
-        result_model = CalcResultSummary.model_validate(run.result_json) if run.result_json is not None else None
+        result_model = (
+            CalcResultSummary.model_validate(run.result_json)
+            if run.result_json is not None
+            else None
+        )
         items.append(
             CalcRunComparisonItem(
                 id=run.id,
@@ -62,11 +65,7 @@ def create_calc_comparison(
 
     get_flowsheet_version_or_404(db, payload.flowsheet_version_id)
 
-    runs = (
-        db.query(models.CalcRun)
-        .filter(models.CalcRun.id.in_(payload.run_ids))
-        .all()
-    )
+    runs = db.query(models.CalcRun).filter(models.CalcRun.id.in_(payload.run_ids)).all()
     if len(runs) != len(payload.run_ids):
         raise HTTPException(status_code=400, detail="Some run_ids were not found")
 
@@ -74,7 +73,10 @@ def create_calc_comparison(
         if run.flowsheet_version_id != payload.flowsheet_version_id:
             raise HTTPException(
                 status_code=400,
-                detail=f"CalcRun {run.id} does not belong to flowsheet version {payload.flowsheet_version_id}",
+                detail=(
+                    f"CalcRun {run.id} does not belong to "
+                    f"flowsheet version {payload.flowsheet_version_id}"
+                ),
             )
 
     comparison = models.CalcComparison(
@@ -111,7 +113,9 @@ def get_calc_comparison(
 
     run_ids = [uuid.UUID(str(rid)) for rid in (comparison.run_ids_json or [])]
     runs_response = (
-        _build_compare_response(db, run_ids, only_success=only_success) if run_ids else CalcRunCompareResponse(items=[], total=0)
+        _build_compare_response(db, run_ids, only_success=only_success)
+        if run_ids
+        else CalcRunCompareResponse(items=[], total=0)
     )
 
     comparison_read = CalcComparisonRead.model_validate(
@@ -140,11 +144,17 @@ def list_calc_comparisons(
     db: Session = Depends(get_db),
 ) -> CalcComparisonListResponse:
     get_flowsheet_version_or_404(db, flowsheet_version_id)
-    query = db.query(models.CalcComparison).filter(models.CalcComparison.flowsheet_version_id == flowsheet_version_id)
+    query = db.query(models.CalcComparison).filter(
+        models.CalcComparison.flowsheet_version_id == flowsheet_version_id
+    )
 
     total = query.with_entities(func.count()).scalar() or 0
-    comparisons = query.order_by(models.CalcComparison.created_at.desc()).offset(offset).limit(limit).all()
-    items = [CalcComparisonListItem.model_validate(comp, from_attributes=True) for comp in comparisons]
+    comparisons = (
+        query.order_by(models.CalcComparison.created_at.desc()).offset(offset).limit(limit).all()
+    )
+    items = [
+        CalcComparisonListItem.model_validate(comp, from_attributes=True) for comp in comparisons
+    ]
     return CalcComparisonListResponse(items=items, total=total)
 
 

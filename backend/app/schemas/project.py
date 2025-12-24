@@ -2,13 +2,12 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel
-
+from app.schemas.calc_run import CalcRunListItem
+from app.schemas.calc_scenario import CalcScenarioRead
+from app.schemas.comment import CommentRead
 from app.schemas.flowsheet_version import FlowsheetVersionRead
 from app.schemas.user import UserRead
-from app.schemas.calc_scenario import CalcScenarioRead
-from app.schemas.calc_run import CalcRunListItem
-from app.schemas.comment import CommentRead
+from pydantic import BaseModel
 
 
 class ProjectFlowsheetVersionRead(BaseModel):
@@ -21,6 +20,7 @@ class ProjectFlowsheetVersionRead(BaseModel):
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
 
 class ProjectBase(BaseModel):
     name: str

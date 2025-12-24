@@ -1,19 +1,19 @@
 import uuid
-from datetime import datetime
-
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
 
 from app.db import Base
 from app.models.user import User
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 
 class CalcRun(Base):
     __tablename__ = "calc_run"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    flowsheet_version_id = Column(UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False)
+    flowsheet_version_id = Column(
+        UUID(as_uuid=True), ForeignKey("flowsheet_version.id"), nullable=False
+    )
     scenario_id = Column(UUID(as_uuid=True), ForeignKey("calc_scenario.id"), nullable=True)
     scenario_name = Column(String(255), nullable=True, default=None)
     comment = Column(Text, nullable=True, default=None)
@@ -26,7 +26,9 @@ class CalcRun(Base):
     input_json = Column(JSON, nullable=True)
     result_json = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     flowsheet_version = relationship("FlowsheetVersion", back_populates="calc_runs")
     scenario = relationship("CalcScenario", back_populates="calc_runs")

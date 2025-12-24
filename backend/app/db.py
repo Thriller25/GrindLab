@@ -3,11 +3,10 @@
 from pathlib import Path
 from typing import Tuple
 
+from app.core.settings import settings  # новый импорт
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
-
-from app.core.settings import settings  # новый импорт
 
 
 def _normalize_db_url(raw_url: str) -> Tuple[str, str | None]:

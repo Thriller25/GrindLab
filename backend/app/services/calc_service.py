@@ -4,9 +4,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-
 from app import models
 from app.schemas.calc_io import CalcInput
 from app.schemas.calc_result import CalcResult, CalcResultKPI, CalcResultStream, CalcResultUnit
@@ -17,11 +14,12 @@ from app.schemas.grind_mvp import (
     GrindMvpFeed,
     GrindMvpInput,
     GrindMvpKPI,
-    GrindMvpMill,
     GrindMvpResult,
     GrindMvpSizeDistribution,
     GrindMvpSizePoint,
 )
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +41,9 @@ def get_flowsheet_version_or_404(db: Session, flowsheet_version_id):
     """
     instance = db.get(models.FlowsheetVersion, flowsheet_version_id)
     if instance is None:
-        raise HTTPException(status_code=404, detail=f"FlowsheetVersion {flowsheet_version_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"FlowsheetVersion {flowsheet_version_id} not found"
+        )
     return instance
 
 
@@ -67,19 +67,27 @@ def validate_input_json(input_json: Any) -> CalcInput:
         try:
             model = CalcInput.model_validate(input_json)
         except Exception:
-            raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
+            raise CalculationError(
+                "input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'"
+            )
     else:
         raise CalculationError("input_json is required and must be an object")
 
     if model.feed_tph is None or model.target_p80_microns is None:
-        raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
+        raise CalculationError(
+            "input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'"
+        )
     if model.feed_tph <= 0 or model.target_p80_microns <= 0:
-        raise CalculationError("input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'")
+        raise CalculationError(
+            "input_json must contain numeric fields 'feed_tph' and 'target_p80_microns'"
+        )
 
     return model
 
 
-def _interp_pXX_from_cumulative(curve: Sequence[Tuple[float, float]], target_pct: float) -> Optional[float]:
+def _interp_pXX_from_cumulative(
+    curve: Sequence[Tuple[float, float]], target_pct: float
+) -> Optional[float]:
     """
     Linear interpolation of size (um) at given cumulative passing percent.
     curve: iterable of (size_um, cumulative_pass_pct) sorted by size.
@@ -111,14 +119,20 @@ def _compute_stream_size_kpi(stream: CalcResultStream) -> CalcResultStream:
 
 
 def _compute_product_pxx(streams: Iterable[CalcResultStream], attr: str) -> Optional[float]:
-    product_streams = [s for s in streams if s.is_product and getattr(s, attr) is not None and s.mass_flow]
+    product_streams = [
+        s for s in streams if s.is_product and getattr(s, attr) is not None and s.mass_flow
+    ]
     total_mass = sum(s.mass_flow for s in product_streams if s.mass_flow is not None)
     if not product_streams or total_mass == 0:
         return None
-    return sum((getattr(s, attr) or 0.0) * (s.mass_flow or 0.0) for s in product_streams) / total_mass
+    return (
+        sum((getattr(s, attr) or 0.0) * (s.mass_flow or 0.0) for s in product_streams) / total_mass
+    )
 
 
-def _compute_unit_throughput_tph(unit: CalcResultUnit, streams_by_id: dict[str, CalcResultStream]) -> Optional[float]:
+def _compute_unit_throughput_tph(
+    unit: CalcResultUnit, streams_by_id: dict[str, CalcResultStream]
+) -> Optional[float]:
     input_flows = [streams_by_id[sid] for sid in unit.input_stream_ids if sid in streams_by_id]
     if input_flows:
         return sum(s.mass_flow for s in input_flows if s.mass_flow is not None)
@@ -137,8 +151,16 @@ def _compute_units_energy_kpi(
     updated: list[CalcResultUnit] = []
     for unit in units:
         throughput = _compute_unit_throughput_tph(unit, streams_by_id)
-        specific_energy = unit.specific_energy_kwh_t if unit.specific_energy_kwh_t is not None else default_specific_energy
-        power_kw = throughput * specific_energy if throughput is not None and specific_energy is not None else None
+        specific_energy = (
+            unit.specific_energy_kwh_t
+            if unit.specific_energy_kwh_t is not None
+            else default_specific_energy
+        )
+        power_kw = (
+            throughput * specific_energy
+            if throughput is not None and specific_energy is not None
+            else None
+        )
         unit.throughput_tph = throughput
         unit.specific_energy_kwh_t = specific_energy
         unit.power_kw = power_kw
@@ -279,7 +301,7 @@ def run_flowsheet_calculation(db: Session, payload: CalcRunCreate) -> CalcRunRea
             error_message=str(exc),
         )
         raise
-    except Exception as exc:  # pragma: no cover - unexpected error branch
+    except Exception:  # pragma: no cover - unexpected error branch
         _persist_status(
             db,
             calc_run,
@@ -339,7 +361,9 @@ def calculate_grind_mvp(input_data: GrindMvpInput) -> GrindMvpResult:
     throughput_tph = input_data.feed.tonnage_tph * (0.9 + 0.2 * power_utilization)
     throughput_tph = max(1.0, throughput_tph)
 
-    product_p80_mm = input_data.classifier.cut_size_p80_mm * (1.0 + (100.0 - mill_utilization_percent) / 500.0)
+    product_p80_mm = input_data.classifier.cut_size_p80_mm * (
+        1.0 + (100.0 - mill_utilization_percent) / 500.0
+    )
 
     specific_energy_kwh_per_t = input_data.mill.power_draw_kw / throughput_tph
     circulating_load_percent = input_data.classifier.circulating_load_percent
@@ -449,10 +473,14 @@ def run_grind_mvp_calculation(db: Session, payload: GrindMvpInput) -> dict:
                     cur = result_model.kpi
                     base = baseline_result.kpi
                     throughput_delta = (
-                        cur.throughput_tph - base.throughput_tph if base.throughput_tph is not None else None
+                        cur.throughput_tph - base.throughput_tph
+                        if base.throughput_tph is not None
+                        else None
                     )
                     product_p80_delta = (
-                        cur.product_p80_mm - base.product_p80_mm if base.product_p80_mm is not None else None
+                        cur.product_p80_mm - base.product_p80_mm
+                        if base.product_p80_mm is not None
+                        else None
                     )
                     spec_energy_delta = (
                         cur.specific_energy_kwh_per_t - base.specific_energy_kwh_per_t

@@ -1,9 +1,8 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.orm import relationship
-
 from app.db import Base
 from app.models.project import Project
 from app.models.user import User
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.orm import relationship
 
 
 class ProjectMember(Base):

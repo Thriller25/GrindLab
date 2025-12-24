@@ -1,8 +1,7 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
-from sqlalchemy.orm import relationship
-
 from app.db import Base
 from app.models.user import User
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy.orm import relationship
 
 
 class UserFavorite(Base):
@@ -16,4 +15,6 @@ class UserFavorite(Base):
 
     user = relationship(User, backref="favorites")
 
-    __table_args__ = (UniqueConstraint("user_id", "entity_type", "entity_id", name="uq_user_favorite"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "entity_type", "entity_id", name="uq_user_favorite"),
+    )

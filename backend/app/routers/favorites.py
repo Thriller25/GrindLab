@@ -1,8 +1,5 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-
 from app import models
 from app.db import get_db
 from app.routers.auth import get_current_user
@@ -17,6 +14,8 @@ from app.schemas import (
     UserFavoritesGrouped,
     UserRead,
 )
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/api/auth/me", tags=["favorites"])
 
@@ -29,7 +28,9 @@ _SUPPORTED_TYPES = {
 
 def _validate_entity(db: Session, entity_type: str, entity_id: str) -> str:
     if entity_type not in _SUPPORTED_TYPES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported entity_type")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported entity_type"
+        )
     model_cls, caster = _SUPPORTED_TYPES[entity_type]
     try:
         parsed_id = caster(entity_id)
@@ -105,9 +106,7 @@ def get_dashboard(
     current_user: models.User = Depends(get_current_user),
 ) -> UserDashboardResponse:
     favorites = (
-        db.query(models.UserFavorite)
-        .filter(models.UserFavorite.user_id == current_user.id)
-        .all()
+        db.query(models.UserFavorite).filter(models.UserFavorite.user_id == current_user.id).all()
     )
 
     project_ids = [int(f.entity_id) for f in favorites if f.entity_type == "project"]
@@ -125,9 +124,15 @@ def get_dashboard(
             except Exception:
                 continue
 
-    projects = db.query(models.Project).filter(models.Project.id.in_(project_ids)).all() if project_ids else []
+    projects = (
+        db.query(models.Project).filter(models.Project.id.in_(project_ids)).all()
+        if project_ids
+        else []
+    )
     scenarios = (
-        db.query(models.CalcScenario).filter(models.CalcScenario.id.in_(scenario_ids)).all() if scenario_ids else []
+        db.query(models.CalcScenario).filter(models.CalcScenario.id.in_(scenario_ids)).all()
+        if scenario_ids
+        else []
     )
     runs = db.query(models.CalcRun).filter(models.CalcRun.id.in_(run_ids)).all() if run_ids else []
 

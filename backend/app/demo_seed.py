@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
-import uuid
-import logging
 
 from app import models
 from app.core.security import hash_password
@@ -29,7 +29,9 @@ def _get_or_create_demo_user(db) -> models.User:
     return demo_user
 
 
-def seed_plants_and_flowsheets(db) -> Tuple[Dict[str, models.Plant], Dict[str, models.FlowsheetVersion]]:
+def seed_plants_and_flowsheets(
+    db,
+) -> Tuple[Dict[str, models.Plant], Dict[str, models.FlowsheetVersion]]:
     created_any = False
 
     plants_data = [
@@ -81,9 +83,7 @@ def seed_plants_and_flowsheets(db) -> Tuple[Dict[str, models.Plant], Dict[str, m
         if not plant:
             continue
         flowsheet = (
-            db.query(models.Flowsheet)
-            .filter_by(plant_id=plant.id, name=data["name"])
-            .first()
+            db.query(models.Flowsheet).filter_by(plant_id=plant.id, name=data["name"]).first()
         )
         if not flowsheet:
             flowsheet = models.Flowsheet(
@@ -281,7 +281,11 @@ def _build_demo_input_json(
             "ball_charge_percent": 15,
             "speed_percent_critical": 75,
         },
-        "classifier": {"type": "Hydrocyclone", "cut_size_p80_mm": 0.18, "circulating_load_percent": 250},
+        "classifier": {
+            "type": "Hydrocyclone",
+            "cut_size_p80_mm": 0.18,
+            "circulating_load_percent": 250,
+        },
         "options": {"use_baseline_run_id": None},
     }
 
