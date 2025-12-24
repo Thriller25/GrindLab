@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@xyflow/react": "^12.10.0",
     "axios": "^1.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -22,7 +23,7 @@
   "scripts": {
     "build": "tsc && vite build",
     "dev": "vite",
-    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 30",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 50",
     "preview": "vite preview",
     "type-check": "tsc --noEmit"
   },

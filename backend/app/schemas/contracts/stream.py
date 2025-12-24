@@ -73,10 +73,11 @@ class Stream(BaseModel):
     stream_type: StreamType = Field(default=StreamType.SLURRY)
 
     # === Топология ===
-    source_node_id: UUID = Field(..., description="UUID узла-источника")
+    # Опциональны для расчётов вне графа (unit tests, standalone calc)
+    source_node_id: Optional[UUID] = Field(None, description="UUID узла-источника")
     source_port: str = Field(default="out", description="Порт выхода на источнике")
 
-    target_node_id: UUID = Field(..., description="UUID узла-приёмника")
+    target_node_id: Optional[UUID] = Field(None, description="UUID узла-приёмника")
     target_port: str = Field(default="in", description="Порт входа на приёмнике")
 
     # === Содержимое потока ===
