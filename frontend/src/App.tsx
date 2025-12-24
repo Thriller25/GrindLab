@@ -6,6 +6,7 @@ import { CalcRunDetailPage } from "./pages/CalcRunDetailPage";
 import { CalcScenariosPage } from "./pages/CalcScenariosPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ScenarioComparePage } from "./pages/ScenarioComparePage";
+import { FlowsheetPage } from "./pages/FlowsheetPage";
 
 export const App = () => {
   return (
@@ -18,6 +19,9 @@ export const App = () => {
         <Route path="/calc-scenarios" element={<CalcScenariosPage />} />
         <Route path="/projects/:projectId" element={<ProjectPage />} />
         <Route path="/projects/:projectId/scenarios/:scenarioId/compare" element={<ScenarioComparePage />} />
+        <Route path="/flowsheet" element={<FlowsheetPage />} />
+        <Route path="/projects/:projectId/flowsheet" element={<FlowsheetPage />} />
+        <Route path="/projects/:projectId/scenarios/:scenarioId/flowsheet" element={<FlowsheetPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
