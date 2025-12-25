@@ -122,7 +122,7 @@ Backend:          Frontend:
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
 | F7.1 | Scenario builder (what-if) | Frontend+Backend | P1 | 🔶 Partial |
-| F7.2 | Batch runs for scenarios | Backend+Core | P1 | 📋 TODO |
+| F7.2 | Batch runs for scenarios | Backend+Frontend | P1 | ✅ Done |
 | F7.3 | Compare dashboard | Frontend | P1 | 📋 TODO |
 
 #### EP8: Visualization & Reporting (S4-S5)
@@ -219,6 +219,15 @@ Backend:          Frontend:
 - ✅ F8.2 Demo data: 7-point fact PSD curve sample (p80=190µm)
 - ✅ All 315 backend tests passing, frontend build successful
 - 🚀 Starting F8.3 (Scenario comparison plots)
+
+### 2025-12-25 (F7.2 Complete — Batch Runs for Scenarios)
+- ✅ Backend: BatchRunRequest/Response schemas
+- ✅ Backend: POST /api/calc-runs/batch-run endpoint (sequential execution)
+- ✅ Frontend: batchRunScenarios() API client function
+- ✅ Frontend: Batch UI integration to ScenarioComparePage
+- ✅ State management: selection, loading, error handling
+- 🧪 All 315 backend tests passing
+- 📦 Frontend build successful (837 kB JS)
 
 ### 2025-12-25 (EP4 Complete — Flowsheet Designer MVP)
 - ✅ F4.1 Flowsheet editor: node graph (React Flow)
