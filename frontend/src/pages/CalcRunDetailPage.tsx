@@ -10,8 +10,11 @@ import {
   fetchGrindMvpRun,
   GrindMvpRunDetail,
   isAuthExpiredError,
+  PSDData,
+  StreamData,
 } from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
+import { PSDChart } from "../components/PSDChart";
 import { DEFAULT_KPI_META, ResolvedKpiMeta, resolveKpiMeta } from "../features/kpi/kpiRegistry";
 import { hasAuth } from "../auth/authProvider";
 
@@ -48,6 +51,40 @@ const STATUS_LABELS: Record<string, string> = {
   running: "Выполняется",
   pending: "В очереди",
 };
+
+/**
+ * Извлечь PSD данные из result_json.streams
+ */
+function extractPSDFromStreams(resultJson: any): PSDData[] {
+  const psdDatasets: PSDData[] = [];
+
+  if (!resultJson || !resultJson.streams) {
+    return psdDatasets;
+  }
+
+  const streams = resultJson.streams as Record<string, StreamData>;
+
+  for (const [streamId, stream] of Object.entries(streams)) {
+    const psd = stream.material?.psd;
+    if (!psd || !psd.points || psd.points.length === 0) {
+      continue;
+    }
+
+    // Преобразуем points в массивы для графика
+    const sizes_mm = psd.points.map((p) => p.size_mm);
+    const cum_passing = psd.points.map((p) => p.cum_passing);
+
+    psdDatasets.push({
+      sizes_mm,
+      cum_passing,
+      p80: psd.p80,
+      p50: psd.p50,
+      p240_passing: psd.p240_passing,
+    });
+  }
+
+  return psdDatasets;
+}
 
 const normalizeErrorMessage = (message?: string | null) => {
   if (!message) return null;
@@ -154,6 +191,11 @@ export const CalcRunDetailPage = () => {
   }, []);
 
   const kpiData = useMemo(() => (runDetail?.result?.kpi ?? {}) as Record<string, unknown>, [runDetail]);
+
+  const psdDatasets = useMemo(() => {
+    if (!meta?.result_json) return [];
+    return extractPSDFromStreams(meta.result_json);
+  }, [meta]);
 
   const metrics = useMemo<MetricConfig[]>(() => {
     const map = new Map<string, MetricConfig>();
@@ -384,6 +426,24 @@ export const CalcRunDetailPage = () => {
               {kpiError && <div className="alert error">{kpiError}</div>}
               {renderKpiTable()}
             </section>
+
+            {psdDatasets.length > 0 && (
+              <section className="section">
+                <div className="section-heading">
+                  <h2>Гранулометрический состав</h2>
+                  <p className="section-subtitle">Кривые проходов по крупности (PSD) для потоков схемы.</p>
+                </div>
+                {psdDatasets.map((psd, index) => (
+                  <div key={index} style={{ marginBottom: "2rem" }}>
+                    <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem", color: "#666" }}>
+                      Поток {index + 1}
+                    </h3>
+                    <PSDChart data={psd} />
+                  </div>
+                ))}
+              </section>
+            )}
+
             <section className="section">
               <div className="section-heading">
                 <h2>Комментарии к запуску</h2>
