@@ -40,11 +40,32 @@ export const DEFAULT_KPI_META: KpiMeta[] = [
     defaultGoal: { type: "lower_is_better" },
   },
   {
+    key: "product_p50_mm",
+    label: "P50 продукта",
+    unit: "мм",
+    precision: 2,
+    defaultGoal: { type: "lower_is_better" },
+  },
+  {
+    key: "product_p98_mm",
+    label: "P98 продукта",
+    unit: "мм",
+    precision: 2,
+    defaultGoal: { type: "lower_is_better" },
+  },
+  {
+    key: "product_passing_240_mesh_pct",
+    label: "% -240 mesh в продукте",
+    unit: "%",
+    precision: 1,
+    defaultGoal: { type: "target_range" },
+  },
+  {
     key: "specific_energy_kwhpt",
     label: "Удельная энергозатратность",
     unit: "кВт·ч/т",
     precision: 2,
-    aliases: ["specific_energy_kwh_per_t"],
+    aliases: ["specific_energy_kwh_per_t", "specific_energy_kwh_t"],
     defaultGoal: { type: "lower_is_better" },
   },
   {
@@ -52,7 +73,7 @@ export const DEFAULT_KPI_META: KpiMeta[] = [
     label: "Циркуляционная нагрузка",
     unit: "%",
     precision: 2,
-    aliases: ["circulating_load_percent"],
+    aliases: ["circulating_load_percent", "circulating_load_pct"],
     defaultGoal: { type: "target_range" },
   },
   {
