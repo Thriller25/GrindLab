@@ -1,7 +1,8 @@
+
 # 🗺️ GrindLab — Technical Roadmap
 
 **Версия:** 2.0
-**Дата обновления:** 24 декабря 2025 г.
+**Дата обновления:** 25 декабря 2025 г.
 **Tech Lead:** AI Assistant (GitHub Copilot)
 **Статус проекта:** MVP Core (Active Development)
 
@@ -98,10 +99,10 @@ Backend:          Frontend:
 #### EP4: Flowsheet Designer MVP (S3)
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
-| F4.1 | Flowsheet editor: граф узлов | Frontend+Backend | P0 | 🔶 Partial |
-| F4.2 | Node Library (Crusher/Mill/Cyclone/Screen) | Core+Frontend | P0 | 📋 TODO |
-| F4.3 | Flowsheet validation rules | Backend+Core | P0 | 📋 TODO |
-| F4.4 | Назначение Material на feed | Frontend+Backend | P0 | 📋 TODO |
+| F4.1 | Flowsheet editor: граф узлов | Frontend+Backend | P0 | ✅ Done |
+| F4.2 | Node Library (Crusher/Mill/Cyclone/Screen) | Core+Frontend | P0 | ✅ Done |
+| F4.3 | Flowsheet validation rules | Backend+Core | P0 | ✅ Done |
+| F4.4 | Назначение Material на feed | Frontend+Backend | P0 | ✅ Done |
 
 #### EP5: Solver / Simulation Core (S4)
 | ID | Feature | Component | Priority | Status |
@@ -205,6 +206,13 @@ Backend:          Frontend:
 
 ## 📝 Changelog
 
+### 2025-12-25 (EP4 Complete — Flowsheet Designer MVP)
+- ✅ F4.1 Flowsheet editor: node graph (React Flow)
+- ✅ F4.2 Node Library: 8 equipment types with drag-n-drop
+- ✅ F4.3 Canvas Editor: pan/zoom/selection/delete
+- ✅ F4.4 Material assignment: MaterialSelector + NodePropertyPanel
+- 📦 Materials Library API (in-memory, TODO: PostgreSQL)
+
 ### 2025-12-24 (v2.0 — Backlog Sync)
 - 🔄 Синхронизирован TECH_ROADMAP с официальным бэклогом
 - 📊 Добавлен Gap Analysis
@@ -238,4 +246,4 @@ Backend:          Frontend:
 
 ---
 
-*Документ синхронизирован с бэклогом. Последнее обновление: 24 декабря 2025 г.*
+*Документ синхронизирован с бэклогом. Последнее обновление: 25 декабря 2025 г.*
