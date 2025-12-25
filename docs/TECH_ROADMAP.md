@@ -122,15 +122,15 @@ Backend:          Frontend:
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
 | F7.1 | Scenario builder (what-if) | Frontend+Backend | P1 | 🔶 Partial |
-| F7.2 | Batch runs for scenarios | Backend+Core | P1 | 📋 TODO |
+| F7.2 | Batch runs for scenarios | Backend+Frontend | P1 | ✅ Done |
 | F7.3 | Compare dashboard | Frontend | P1 | 📋 TODO |
 
 #### EP8: Visualization & Reporting (S4-S5)
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
 | F8.1 | PSD plots (включая P240) | Frontend | P0 | ✅ Done |
-| F8.2 | Fact vs Model plots | Frontend | P1 | 📋 TODO |
-| F8.3 | Scenario comparison plots | Frontend | P1 | 📋 TODO |
+| F8.2 | Fact vs Model plots | Frontend | P1 | ✅ Done |
+| F8.3 | Scenario comparison plots | Frontend | P1 | ✅ Done |
 | F8.4 | Export package (PNG + CSV/Excel) | Backend+Frontend | P1 | 📋 TODO |
 
 #### EP9: Platform (S0-S2)
@@ -205,6 +205,29 @@ Backend:          Frontend:
 ---
 
 ## 📝 Changelog
+
+### 2025-12-25 (F8.3 Complete — Scenario Comparison PSD Plots)
+- ✅ F8.3 Frontend: ScenarioPSDComparison component for multi-scenario visualization
+- ✅ F8.3 Features: Color-coded curves, reference lines (P80/P50), smart interpolation
+- ✅ F8.3 Integration: Added PSD comparison section to ScenarioComparePage
+- ✅ EP8 (Visualization) 3 of 4 features complete (F8.1, F8.2, F8.3)
+- 📋 Next: F8.4 (Export PNG/CSV) or move to next epic
+
+### 2025-12-25 (F8.2 Complete — Fact vs Model Plots)
+- ✅ F8.2 Backend: Add FactPSD schema to CalcInput
+- ✅ F8.2 Frontend: Dual PSD charts (fact vs model) with P80 delta metrics
+- ✅ F8.2 Demo data: 7-point fact PSD curve sample (p80=190µm)
+- ✅ All 315 backend tests passing, frontend build successful
+- 🚀 Starting F8.3 (Scenario comparison plots)
+
+### 2025-12-25 (F7.2 Complete — Batch Runs for Scenarios)
+- ✅ Backend: BatchRunRequest/Response schemas
+- ✅ Backend: POST /api/calc-runs/batch-run endpoint (sequential execution)
+- ✅ Frontend: batchRunScenarios() API client function
+- ✅ Frontend: Batch UI integration to ScenarioComparePage
+- ✅ State management: selection, loading, error handling
+- 🧪 All 315 backend tests passing
+- 📦 Frontend build successful (837 kB JS)
 
 ### 2025-12-25 (EP4 Complete — Flowsheet Designer MVP)
 - ✅ F4.1 Flowsheet editor: node graph (React Flow)

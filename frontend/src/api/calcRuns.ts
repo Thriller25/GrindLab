@@ -1,6 +1,26 @@
 import { api } from "./client";
 import type { FlowsheetNode, FlowsheetEdge } from "../features/flowsheet";
 
+export type PSDPoint = {
+  size_um: number;
+  pass_pct: number;
+};
+
+export type FactPSD = {
+  points: PSDPoint[];
+  p80_um?: number | null;
+  p50_um?: number | null;
+};
+
+export type CalcInput = {
+  feed_tph?: number | null;
+  target_p80_microns?: number | null;
+  ore_hardness_ab?: number | null;
+  ore_hardness_ta?: number | null;
+  water_fraction?: number | null;
+  fact_psd?: FactPSD | null;
+};
+
 export type RunAndSavePayload = {
   flowsheet_version_id: string;
   project_id?: number;
@@ -30,8 +50,20 @@ export type CalcRunRead = {
   updated_at: string;
   comment?: string | null;
   error_message?: string | null;
-  input_json?: any;
+  input_json?: CalcInput | null;
   result_json?: any;
+};
+
+export type BatchRunRequest = {
+  flowsheet_version_id: string;
+  scenario_ids: string[];
+  project_id?: number | null;
+  comment?: string | null;
+};
+
+export type BatchRunResponse = {
+  runs: CalcRunRead[];
+  total: number;
 };
 
 export async function runAndSaveFlowsheet(
@@ -56,5 +88,10 @@ export async function runAndSaveFlowsheet(
     })),
   };
   const resp = await api.post<CalcRunRead>("/api/calc-runs/run-and-save", payload);
+  return resp.data;
+}
+
+export async function batchRunScenarios(payload: BatchRunRequest): Promise<BatchRunResponse> {
+  const resp = await api.post<BatchRunResponse>("/api/calc-runs/batch-run", payload);
   return resp.data;
 }

@@ -92,3 +92,19 @@ class CalcRunCompareWithBaselineResponse(BaseModel):
     baseline: CalcRunComparisonItem
     items: list[CalcRunCompareWithBaselineItem]
     total: int
+
+
+class BatchRunRequest(BaseModel):
+    """Request to run multiple scenarios"""
+
+    flowsheet_version_id: UUID
+    scenario_ids: list[UUID]
+    project_id: Optional[int] = None
+    comment: Optional[str] = None
+
+
+class BatchRunResponse(BaseModel):
+    """Response containing multiple created runs"""
+
+    runs: list[CalcRunRead]
+    total: int

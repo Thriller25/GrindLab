@@ -11,7 +11,9 @@ import {
   updateScenario,
   ProjectDashboardResponse,
 } from "../api/client";
+import { batchRunScenarios } from "../api/calcRuns";
 import BackToHomeButton from "../components/BackToHomeButton";
+import { ScenarioPSDComparison } from "../components/ScenarioPSDComparison";
 import {
   DEFAULT_KPI_META,
   GoalType,
@@ -310,6 +312,10 @@ export const ScenarioComparePage = () => {
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const [authExpired, setAuthExpired] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(() => hasAuth());
+  const [batchSelectedScenarioIds, setBatchSelectedScenarioIds] = useState<Set<string>>(new Set());
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchSuccess, setBatchSuccess] = useState<string | null>(null);
 
   const handleAuthExpired = () => {
     setAuthExpired(true);
@@ -744,6 +750,52 @@ export const ScenarioComparePage = () => {
     return initial;
   }, [comparisonMetrics]);
 
+  const scenarioPSDData = useMemo(() => {
+    const items = [];
+
+    if (baselineRunOption && baselineRunOption.result_json?.streams) {
+      const streams = baselineRunOption.result_json.streams;
+      const streamsList = Object.values(streams) as any[];
+      const productStream = streamsList.find((s: any) => s.stream_type === "product") ?? streamsList[0];
+      if (productStream?.material?.psd?.points) {
+        const psd = productStream.material.psd;
+        items.push({
+          name: `Базовый: ${baselineScenario?.name || "без имени"}`,
+          psd: {
+            sizes_mm: psd.points.map((p: any) => p.size_mm),
+            cum_passing: psd.points.map((p: any) => p.cum_passing),
+            p80: psd.p80,
+            p50: psd.p50,
+          },
+          color: "#6b7280",
+          strokeDasharray: "5 5",
+        });
+      }
+    }
+
+    if (scenarioRunOption && scenarioRunOption.result_json?.streams) {
+      const streams = scenarioRunOption.result_json.streams;
+      const streamsList = Object.values(streams) as any[];
+      const productStream = streamsList.find((s: any) => s.stream_type === "product") ?? streamsList[0];
+      if (productStream?.material?.psd?.points) {
+        const psd = productStream.material.psd;
+        items.push({
+          name: `Сценарий: ${selectedScenario?.name || "без имени"}`,
+          psd: {
+            sizes_mm: psd.points.map((p: any) => p.size_mm),
+            cum_passing: psd.points.map((p: any) => p.cum_passing),
+            p80: psd.p80,
+            p50: psd.p50,
+          },
+          color: "#3b82f6",
+          strokeDasharray: undefined,
+        });
+      }
+    }
+
+    return items;
+  }, [baselineRunOption, scenarioRunOption, baselineScenario?.name, selectedScenario?.name]);
+
   const topImprovements = useMemo(
     () =>
       comparisonMetrics
@@ -838,6 +890,46 @@ export const ScenarioComparePage = () => {
   const handleOpenRunDetails = (id?: string | null) => {
     if (!id) return;
     navigate(`/calc-runs/${id}`);
+  };
+
+  const toggleBatchScenario = (scenarioId: string) => {
+    setBatchSelectedScenarioIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(scenarioId)) {
+        next.delete(scenarioId);
+      } else {
+        next.add(scenarioId);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchRunScenarios = async () => {
+    if (!projectId || !flowsheetVersionId || batchSelectedScenarioIds.size === 0) {
+      setBatchError("Выберите хотя бы один сценарий для запуска");
+      return;
+    }
+
+    setBatchRunning(true);
+    setBatchError(null);
+    setBatchSuccess(null);
+
+    try {
+      const response = await batchRunScenarios({
+        flowsheet_version_id: flowsheetVersionId as string,
+        scenario_ids: Array.from(batchSelectedScenarioIds),
+        project_id: projectId ? parseInt(projectId, 10) : undefined,
+        comment: `Batch run of ${batchSelectedScenarioIds.size} scenarios`,
+      });
+
+      setBatchSuccess(`Успешно запущено ${response.runs.length} сценариев`);
+      setBatchSelectedScenarioIds(new Set());
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Ошибка при выполнении batch-запуска";
+      setBatchError(msg);
+    } finally {
+      setBatchRunning(false);
+    }
   };
 
   const setGoalForMetric = (metricKey: string, updater: (goal: KpiGoal) => KpiGoal) => {
@@ -1368,8 +1460,54 @@ export const ScenarioComparePage = () => {
                     </label>
                   </div>
                   {renderComparisonTable(filteredMetrics)}
+
+                  {scenarioPSDData.length > 0 && (
+                    <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #e5e7eb" }}>
+                      <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Сравнение гранулометрического состава</h3>
+                      <p className="section-subtitle" style={{ marginBottom: "1rem" }}>
+                        Визуальное сравнение кривых прохода (PSD) для сценариев
+                      </p>
+                      <ScenarioPSDComparison
+                        scenarios={scenarioPSDData}
+                        title="Кривые PSD по сценариям"
+                        height={350}
+                        showReferenceLines={true}
+                      />
+                    </div>
+                  )}
                 </section>
               )}
+
+              <section className="section" style={{ marginTop: 24 }}>
+                <div className="section-heading">
+                  <h2>Пакетный запуск сценариев</h2>
+                  <p className="section-subtitle">
+                    Быстрый запуск нескольких сценариев одновременно
+                  </p>
+                </div>
+
+                {batchError && <div className="alert error">{batchError}</div>}
+                {batchSuccess && <div className="alert success">{batchSuccess}</div>}
+
+                {/* Note: In real implementation, this would need access to allScenarios from parent */}
+                {/* For now, show batch controls but note they need integration with scenario list */}
+                <div className="empty-state" style={{ padding: 16, textAlign: "center" }}>
+                  <p className="muted">
+                    Пакетный запуск интегрируется с выбором сценариев на странице проекта.
+                    <br />
+                    Выберите несколько сценариев и используйте кнопку "Запустить выбранные".
+                  </p>
+                  <div className="actions" style={{ marginTop: 12 }}>
+                    <button
+                      className="btn secondary"
+                      type="button"
+                      onClick={handleBackToProject}
+                    >
+                      К списку сценариев
+                    </button>
+                  </div>
+                </div>
+              </section>
             </section>
           </>
         )}

@@ -95,6 +95,9 @@ MVP GrindLab предполагает следующую целевую архи
 | [docs/TECH_ROADMAP.md](docs/TECH_ROADMAP.md) | 🗺️ Roadmap, текущий статус, план работ |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 📐 Архитектура системы |
 | [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | 📊 Модель данных (сущности, поля, связи) |
+| [docs/DEMO_DATA_BLUEPRINT.md](docs/DEMO_DATA_BLUEPRINT.md) | 🎬 Макет демонстрационных данных (актуализируется постоянно) |
+| [docs/DEMO_SETUP_AND_USAGE.md](docs/DEMO_SETUP_AND_USAGE.md) | 🎯 Руководство по использованию демо-среды |
+| [docs/DEMO_DOCKER_COMPOSE.md](docs/DEMO_DOCKER_COMPOSE.md) | 🐳 Docker Compose для быстрого разворота демо |
 | [docs/dev.md](docs/dev.md) | 🛠️ Команды для разработки |
 | [docs/testing.md](docs/testing.md) | ✅ Чек-лист тестирования |
 | [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md) | 📋 Правила разработки |
