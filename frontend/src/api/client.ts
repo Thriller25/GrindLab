@@ -325,6 +325,7 @@ export type ProjectCalcRunListItem = {
   flowsheet_version_id?: string;
   scenario_id?: string | null;
   scenario_name?: string | null;
+  project_id?: number;
   status?: string;
   started_at?: string | null;
   finished_at?: string | null;
@@ -332,6 +333,20 @@ export type ProjectCalcRunListItem = {
   error_message?: string | null;
   started_by_user_id?: string | null;
   is_baseline?: boolean;
+  input_json?: any;
+  result_json?: {
+    kpi?: {
+      throughput_tph?: number | null;
+      product_p80_mm?: number | null;
+      specific_energy_kwh_per_t?: number | null;
+      circulating_load_percent?: number | null;
+      mill_utilization_percent?: number | null;
+    };
+    size_distribution?: {
+      feed?: Array<{ size_mm: number; cum_percent: number }>;
+      product?: Array<{ size_mm: number; cum_percent: number }>;
+    };
+  };
 };
 
 export type ProjectComment = {
@@ -354,13 +369,63 @@ export type ProjectDashboardResponse = {
   recent_comments: ProjectComment[];
 };
 
+export type CalcRunKpiSummary = {
+  throughput_tph: number | null;
+  product_p80_mm: number | null;
+  specific_energy_kwhpt: number | null;
+  circulating_load_pct: number | null;
+  power_use_pct: number | null;
+};
+
+export type CalcRunKpiDiffSummary = {
+  throughput_tph_delta: number | null;
+  specific_energy_kwhpt_delta: number | null;
+  p80_mm_delta: number | null;
+  circulating_load_pct_delta: number | null;
+  power_use_pct_delta: number | null;
+};
+
+export type ProjectFlowsheetSummary = {
+  flowsheet_id: string;
+  flowsheet_name: string;
+  flowsheet_version_id: string;
+  flowsheet_version_label: string;
+  model_code: string;
+  plant_name: string | null;
+  has_runs: boolean;
+  baseline_run: CalcRunKpiSummary | null;
+  best_project_run: CalcRunKpiSummary | null;
+  diff_vs_baseline: CalcRunKpiDiffSummary | null;
+};
+
+export type ProjectDetailResponse = {
+  id: number;
+  name: string;
+  description: string | null;
+  owner_user_id: string | null;
+  plant_id: string | null;
+  created_at: string;
+  updated_at: string;
+  flowsheet_versions: ProjectFlowsheetVersion[];
+  flowsheet_summaries: ProjectFlowsheetSummary[];
+};
+
 export async function fetchMyProjects(): Promise<ProjectListResponse> {
   const resp = await api.get<ProjectListResponse>("/api/projects/my");
   return resp.data;
 }
 
-export async function fetchProjectDashboard(projectId: string | number): Promise<ProjectDashboardResponse> {
-  const resp = await api.get<ProjectDashboardResponse>(`/api/projects/${projectId}/dashboard`);
+export async function fetchProjectDashboard(
+  projectId: string | number,
+  options?: { runsLimit?: number },
+): Promise<ProjectDashboardResponse> {
+  const params = options?.runsLimit ? { runs_limit: options.runsLimit } : undefined;
+  const resp = await api.get<ProjectDashboardResponse>(`/api/projects/${projectId}/dashboard`, { params });
+  return resp.data;
+}
+
+export async function fetchProjectDetail(projectId: string | number): Promise<ProjectDetailResponse> {
+  const resp = await api.get<ProjectDetailResponse>(`/api/projects/${projectId}`);
   return resp.data;
 }
 

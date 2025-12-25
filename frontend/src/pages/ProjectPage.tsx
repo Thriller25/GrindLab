@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import BackToHomeButton from "../components/BackToHomeButton";
+import { FlowsheetKPIComparison } from "../components/FlowsheetKPIComparison";
 import {
   CalcScenario,
   deleteCalcScenario,
   fetchProjectDashboard,
+  fetchProjectDetail,
   isAuthExpiredError,
   ProjectDashboardResponse,
+  ProjectDetailResponse,
   createProjectComment,
   ProjectComment,
   setCalcScenarioBaseline,
@@ -19,6 +22,7 @@ export const ProjectPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [data, setData] = useState<ProjectDashboardResponse | null>(null);
+  const [projectDetail, setProjectDetail] = useState<ProjectDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scenarioActionError, setScenarioActionError] = useState<string | null>(null);
@@ -45,6 +49,19 @@ export const ProjectPage = () => {
     () => new URLSearchParams(location.search).get("scenarioId"),
   );
   const [highlightedScenarioId, setHighlightedScenarioId] = useState<string | null>(null);
+  const getInitialGraphMode = () => {
+    const params = new URLSearchParams(location.search);
+    const mode = params.get("graphMode");
+    return mode === "summary" ? "summary" : "all";
+  };
+
+  const getInitialVersionId = () => {
+    const params = new URLSearchParams(location.search);
+    return params.get("versionId") || "all";
+  };
+
+  const [graphMode, setGraphMode] = useState<"all" | "summary">(() => getInitialGraphMode());
+  const [selectedVersionId, setSelectedVersionId] = useState<string | "all">(() => getInitialVersionId());
   const scenarioRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const highlightTimeoutRef = useRef<number | null>(null);
   const [authExpired, setAuthExpired] = useState(false);
@@ -102,6 +119,11 @@ export const ProjectPage = () => {
       return acc;
     }, {});
   }, [data]);
+  const versionOptions = useMemo(() => {
+    return [{ id: "all", label: "Все версии" }].concat(
+      (projectDetail?.flowsheet_versions || []).map((v) => ({ id: String(v.flowsheet_version_id || v.id), label: v.flowsheet_version_label || v.flowsheet_name || String(v.id) }))
+    );
+  }, [projectDetail]);
   const scenarios = useMemo(() => {
     const items = data?.scenarios ?? [];
     return [...items].sort((a, b) => {
@@ -127,13 +149,21 @@ export const ProjectPage = () => {
     if (!projectId) {
       setError("Не указан идентификатор проекта");
       setData(null);
+      setProjectDetail(null);
       return;
     }
     setIsLoading(true);
     setError(null);
     setScenarioActionError(null);
-    fetchProjectDashboard(projectId)
-      .then((resp) => setData(resp))
+
+    Promise.all([
+      fetchProjectDashboard(projectId, { runsLimit: 200 }),
+      fetchProjectDetail(projectId),
+    ])
+      .then(([dashboardResp, detailResp]) => {
+        setData(dashboardResp);
+        setProjectDetail(detailResp);
+      })
       .catch(() => setError("Не удалось загрузить дашборд проекта"))
       .finally(() => setIsLoading(false));
   }, [projectId]);
@@ -141,6 +171,14 @@ export const ProjectPage = () => {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const mode = params.get("graphMode") === "summary" ? "summary" : "all";
+    const version = params.get("versionId") || "all";
+    if (mode !== graphMode) setGraphMode(mode);
+    if (version !== selectedVersionId) setSelectedVersionId(version);
+  }, [location.search, graphMode, selectedVersionId]);
 
   useEffect(() => {
     const syncAuthState = () => {
@@ -211,6 +249,39 @@ export const ProjectPage = () => {
     },
     [],
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    let changed = false;
+
+    const currentMode = params.get("graphMode") === "summary" ? "summary" : "all";
+    if (currentMode !== graphMode) {
+      if (graphMode === "all") {
+        params.delete("graphMode");
+      } else {
+        params.set("graphMode", graphMode);
+      }
+      changed = true;
+    }
+
+    const currentVersion = params.get("versionId") || "all";
+    if (currentVersion !== selectedVersionId) {
+      if (selectedVersionId === "all") {
+        params.delete("versionId");
+      } else {
+        params.set("versionId", String(selectedVersionId));
+      }
+      changed = true;
+    }
+
+    if (changed) {
+      const nextSearch = params.toString();
+      navigate(
+        { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+        { replace: true },
+      );
+    }
+  }, [graphMode, selectedVersionId, location.pathname, location.search, navigate]);
 
   const recommendationActionsDisabled = !isAuthenticated || authExpired;
   const summary = data?.summary;
@@ -472,6 +543,44 @@ export const ProjectPage = () => {
 
         {!isLoading && !error && data && (
           <>
+            {/* KPI Graphs Section */}
+            {projectDetail && projectDetail.flowsheet_summaries && projectDetail.flowsheet_summaries.length > 0 && (
+              <section className="section">
+                <div className="section-heading" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <h2>Графики KPI проекта</h2>
+                    <p className="section-subtitle">Сравнение расчётов по KPI для версий схем.</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select
+                      value={selectedVersionId}
+                      onChange={(e) => setSelectedVersionId(e.target.value as any)}
+                      className="input"
+                      title="Фильтр по версии схемы"
+                    >
+                      {versionOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={graphMode}
+                      onChange={(e) => setGraphMode(e.target.value as any)}
+                      className="input"
+                      title="Режим графиков"
+                    >
+                      <option value="all">Все расчёты</option>
+                      <option value="summary">Базовый vs Лучший</option>
+                    </select>
+                  </div>
+                </div>
+                <FlowsheetKPIComparison
+                  summaries={projectDetail.flowsheet_summaries}
+                  recentRuns={graphMode === "all" ? data.recent_calc_runs : undefined}
+                  filterVersionId={selectedVersionId === "all" ? undefined : String(selectedVersionId)}
+                />
+              </section>
+            )}
+
             <section className="section">
                           <div className="kpi-grid">
                             <div className="metric-card">

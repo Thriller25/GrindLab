@@ -55,6 +55,40 @@ const STATUS_LABELS: Record<string, string> = {
   pending: "В очереди",
 };
 
+type SizeDistributionPoint = { size_mm: number; cum_percent: number };
+
+function computePx(targetPercent: number, points: SizeDistributionPoint[]): number | null {
+  if (!points || points.length < 2) return null;
+
+  const sorted = [...points].sort((a, b) => a.cum_percent - b.cum_percent);
+
+  if (targetPercent <= sorted[0].cum_percent) return sorted[0].size_mm;
+  if (targetPercent >= sorted[sorted.length - 1].cum_percent) return sorted[sorted.length - 1].size_mm;
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i];
+    const b = sorted[i + 1];
+    if (targetPercent >= a.cum_percent && targetPercent <= b.cum_percent) {
+      const span = b.cum_percent - a.cum_percent;
+      if (span === 0) return b.size_mm;
+      const ratio = (targetPercent - a.cum_percent) / span;
+      return a.size_mm + (b.size_mm - a.size_mm) * ratio;
+    }
+  }
+
+  return null;
+}
+
+function convertSizeDistributionToPSD(points: SizeDistributionPoint[]): PSDData {
+  return {
+    sizes_mm: points.map((p) => p.size_mm),
+    cum_passing: points.map((p) => p.cum_percent),
+    p80: computePx(80, points) ?? undefined,
+    p50: computePx(50, points) ?? undefined,
+    p240_passing: undefined,
+  };
+}
+
 /**
  * Извлечь PSD данные из result_json.streams
  */
@@ -90,6 +124,15 @@ function extractPSDFromStreams(resultJson: any): PSDData[] {
 }
 
 function pickProductPSD(resultJson: any): PSDData | null {
+  // Сначала проверяем новый формат size_distribution
+  if (resultJson?.size_distribution?.product) {
+    const product = resultJson.size_distribution.product as Array<{ size_mm: number; cum_percent: number }>;
+    if (product.length > 0) {
+      return convertSizeDistributionToPSD(product);
+    }
+  }
+
+  // Fallback: старый формат streams
   if (!resultJson || !resultJson.streams) return null;
 
   const streams = Object.values(resultJson.streams as Record<string, StreamData>);
@@ -107,9 +150,18 @@ function pickProductPSD(resultJson: any): PSDData | null {
 }
 
 /**
- * Extract fact PSD from input_json.fact_psd
+ * Extract fact PSD from input_json.fact_psd or result_json.size_distribution.feed
  */
-function pickFactPSD(inputJson: any): PSDData | null {
+function pickFactPSD(inputJson: any, resultJson?: any): PSDData | null {
+  // Проверяем result_json.size_distribution.feed (новый формат)
+  if (resultJson?.size_distribution?.feed) {
+    const feed = resultJson.size_distribution.feed as Array<{ size_mm: number; cum_percent: number }>;
+    if (feed.length > 0) {
+      return convertSizeDistributionToPSD(feed);
+    }
+  }
+
+  // Fallback: старый формат input_json.fact_psd
   if (!inputJson?.fact_psd?.points || inputJson.fact_psd.points.length === 0) return null;
 
   const points = inputJson.fact_psd.points as Array<{ size_um: number; pass_pct: number }>;
@@ -251,8 +303,8 @@ export const CalcRunDetailPage = () => {
   }, [meta]);
 
   const factPsd = useMemo(() => {
-    if (!meta?.input_json) return null;
-    return pickFactPSD(meta.input_json);
+    if (!meta) return null;
+    return pickFactPSD(meta.input_json, meta.result_json);
   }, [meta]);
 
   const metrics = useMemo<MetricConfig[]>(() => {
@@ -488,10 +540,10 @@ export const CalcRunDetailPage = () => {
             {(productPsd || factPsd) && (
               <section className="section">
                 <div className="section-heading">
-                  <h2>Fact vs Model (P80)</h2>
+                  <h2>Fact vs Model (P80/P50)</h2>
                   <p className="section-subtitle">
                     {factPsd
-                      ? "Сравнение измеренной PSD с расчётной моделью и целевым P80."
+                      ? "Сравнение измеренной PSD с расчётной моделью и целевым P80/P50."
                       : "Сравнение расчётной PSD продукта с целевым P80."}
                   </p>
                 </div>
@@ -509,6 +561,18 @@ export const CalcRunDetailPage = () => {
                       <div className="stat">
                         <div className="stat-label">Δ P80 (fact - model)</div>
                         <div className="stat-value">{formatMm(factPsd.p80 != null && productPsd?.p80 != null ? factPsd.p80 - productPsd.p80 : null)}</div>
+                      </div>
+                      <div className="stat">
+                        <div className="stat-label">Fact P50</div>
+                        <div className="stat-value">{formatMm(factPsd.p50)}</div>
+                      </div>
+                      <div className="stat">
+                        <div className="stat-label">Model P50</div>
+                        <div className="stat-value">{formatMm(productPsd?.p50)}</div>
+                      </div>
+                      <div className="stat">
+                        <div className="stat-label">Δ P50 (fact - model)</div>
+                        <div className="stat-value">{formatMm(factPsd.p50 != null && productPsd?.p50 != null ? factPsd.p50 - productPsd.p50 : null)}</div>
                       </div>
                     </>
                   )}

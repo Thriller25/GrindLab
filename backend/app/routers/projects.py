@@ -746,6 +746,7 @@ RECENT_COMMENTS_LIMIT = 10
 @router.get("/{project_id}/dashboard", response_model=ProjectDashboardResponse)
 def get_project_dashboard(
     project_id: str,
+    runs_limit: int = Query(RECENT_RUNS_LIMIT, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> ProjectDashboardResponse:
@@ -793,7 +794,7 @@ def get_project_dashboard(
                 models.CalcRun.project_id == project.id,
             )
             .order_by(models.CalcRun.started_at.desc().nullslast())
-            .limit(RECENT_RUNS_LIMIT)
+            .limit(runs_limit)
             .all()
         )
     else:

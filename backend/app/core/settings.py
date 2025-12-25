@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # URL базы данных для SQLAlchemy
-    db_url: str = "sqlite:///./grindlab.db"
+    db_url: str = "postgresql://grindlab:grindlab_password@localhost:5432/grindlab"
 
     # Флаг для включения debug-режима FastAPI (пока просто bool)
     app_debug: bool = True

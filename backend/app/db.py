@@ -27,7 +27,8 @@ def _normalize_db_url(raw_url: str) -> Tuple[str, str | None]:
         resolved_path = str(path)
         url = url.set(database=resolved_path)
 
-    return str(url), resolved_path
+    # render_as_string with hide_password=False to keep real password (str(url) masks it with ***)
+    return url.render_as_string(hide_password=False), resolved_path
 
 
 # Берём URL базы из настроек и фиксируем путь

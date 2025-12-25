@@ -15,8 +15,11 @@ RUN npm ci --silent
 # Copy source code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build arguments (can be overridden at build time)
+ARG VITE_API_BASE_URL=http://127.0.0.1:8000
+
+# Build the application with API URL
+RUN VITE_API_BASE_URL=${VITE_API_BASE_URL} npm run build
 
 # Stage 2: Production stage with nginx
 FROM nginx:alpine as production
