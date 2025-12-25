@@ -68,12 +68,17 @@ class FeedUnit(UnitModel):
             source_port="out",
         )
 
+        # Расширенные KPI для питания
+        kpi = {
+            "feed_tph": tph,
+            "f80_mm": f80_mm,
+        }
+        if psd.p50:
+            kpi["f50_mm"] = psd.p50
+
         return UnitResult(
             outputs={"out": output},
-            kpi={
-                "feed_tph": tph,
-                "f80_mm": f80_mm,
-            },
+            kpi=kpi,
         )
 
 
@@ -85,13 +90,23 @@ class ProductUnit(UnitModel):
         if not feed:
             return UnitResult(error="No input stream")
 
+        # Расширенные KPI для продукта
+        kpi = {
+            "product_tph": feed.mass_tph,
+            "p80_mm": feed.p80_mm or 0.0,
+            "solids_pct": feed.solids_pct,
+        }
+
+        # Добавляем PSD-метрики если есть PSD
+        if feed.psd:
+            kpi["p98_mm"] = feed.psd.p98 or 0.0
+            kpi["p50_mm"] = feed.psd.p50 or 0.0
+            kpi["p20_mm"] = feed.psd.p20 or 0.0
+            kpi["passing_240_mesh_pct"] = feed.psd.get_passing_240_mesh()
+
         return UnitResult(
             outputs={},
-            kpi={
-                "product_tph": feed.mass_tph,
-                "p80_mm": feed.p80_mm or 0.0,
-                "solids_pct": feed.solids_pct,
-            },
+            kpi=kpi,
         )
 
 

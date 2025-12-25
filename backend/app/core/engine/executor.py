@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from .graph import FlowsheetGraph, GraphEdge
 from .stream import Stream
@@ -283,29 +283,49 @@ class FlowsheetExecutor:
         # Суммарное питание
         total_feed = 0.0
         feed_f80 = None
+        feed_f50 = None
         for node in self.graph.get_feed_nodes():
             node_kpi = self._node_kpi.get(node.id, {})
             total_feed += node_kpi.get("feed_tph", 0.0)
             if feed_f80 is None:
                 feed_f80 = node_kpi.get("f80_mm")
+                feed_f50 = node_kpi.get("f50_mm")
 
         kpi["total_feed_tph"] = round(total_feed, 1)
         if feed_f80:
             kpi["feed_f80_mm"] = round(feed_f80, 2)
+        if feed_f50:
+            kpi["feed_f50_mm"] = round(feed_f50, 2)
 
         # Суммарный продукт
         total_product = 0.0
         product_p80_weighted = 0.0
+        product_p50_weighted = 0.0
+        product_p98_weighted = 0.0
+        product_passing_240_weighted = 0.0
+
         for node in self.graph.get_product_nodes():
             node_kpi = self._node_kpi.get(node.id, {})
             prod_tph = node_kpi.get("product_tph", 0.0)
             prod_p80 = node_kpi.get("p80_mm", 0.0)
+            prod_p50 = node_kpi.get("p50_mm", 0.0)
+            prod_p98 = node_kpi.get("p98_mm", 0.0)
+            prod_passing_240 = node_kpi.get("passing_240_mesh_pct", 0.0)
+
             total_product += prod_tph
             product_p80_weighted += prod_tph * prod_p80
+            product_p50_weighted += prod_tph * prod_p50
+            product_p98_weighted += prod_tph * prod_p98
+            product_passing_240_weighted += prod_tph * prod_passing_240
 
         kpi["total_product_tph"] = round(total_product, 1)
         if total_product > 0:
             kpi["product_p80_mm"] = round(product_p80_weighted / total_product, 4)
+            kpi["product_p50_mm"] = round(product_p50_weighted / total_product, 4)
+            kpi["product_p98_mm"] = round(product_p98_weighted / total_product, 4)
+            kpi["product_passing_240_mesh_pct"] = round(
+                product_passing_240_weighted / total_product, 1
+            )
 
         # Массовый баланс
         if total_feed > 0:
@@ -328,7 +348,49 @@ class FlowsheetExecutor:
         if feed_f80 and kpi.get("product_p80_mm"):
             kpi["reduction_ratio"] = round(feed_f80 / kpi["product_p80_mm"], 1)
 
+        # Circulating Load — рассчитываем для рециклов
+        circulating_load = self._compute_circulating_load()
+        if circulating_load is not None:
+            kpi["circulating_load_pct"] = circulating_load
+
         return kpi
+
+    def _compute_circulating_load(self) -> Optional[float]:
+        """
+        Вычислить Circulating Load (циркулирующую нагрузку).
+
+        CL = (масса рецикла / масса свежего питания) * 100%
+
+        Для схемы с гидроциклоном:
+        CL = underflow / fresh_feed * 100
+        """
+        # Находим все Mill ноды и их входные/выходные потоки
+        fresh_feed_tph = 0.0
+        for node in self.graph.get_feed_nodes():
+            node_kpi = self._node_kpi.get(node.id, {})
+            fresh_feed_tph += node_kpi.get("feed_tph", 0.0)
+
+        if fresh_feed_tph <= 0:
+            return None
+
+        # Находим рециклы (потоки, идущие назад в топологии)
+        recycle_edges = self.graph.find_recycle_streams()
+        if not recycle_edges:
+            return None
+
+        # Суммируем массу рециклов
+        recycle_mass = 0.0
+        for edge in recycle_edges:
+            stream = self._streams.get(edge.id)
+            if stream:
+                recycle_mass += stream.mass_tph
+
+        if recycle_mass <= 0:
+            return None
+
+        # CL = recycle / fresh_feed * 100
+        circulating_load = (recycle_mass / fresh_feed_tph) * 100.0
+        return round(circulating_load, 1)
 
 
 def execute_flowsheet(nodes_data: list[dict], edges_data: list[dict]) -> dict[str, Any]:

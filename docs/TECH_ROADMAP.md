@@ -107,8 +107,8 @@ Backend:          Frontend:
 #### EP5: Solver / Simulation Core (S4)
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
-| F5.1 | Execution engine + convergence | Core | P0 | 📋 TODO |
-| F5.2 | KPI computation (P80/P50/P240, CL) | Core | P0 | 📋 TODO |
+| F5.1 | Execution engine + convergence | Core | P0 | ✅ Done |
+| F5.2 | KPI computation (P80/P50/P240, CL) | Core | P0 | ✅ Done |
 | F5.3 | Run management (RunVersion) | Backend+DB | P0 | 🔶 Partial |
 
 #### EP6: Calibration & Validation (S5)

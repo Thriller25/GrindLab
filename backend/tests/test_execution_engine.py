@@ -454,3 +454,188 @@ class TestSimulationAPI:
 
         response = client.post("/api/simulation/run", json={"nodes": [], "edges": []})
         assert response.status_code == 400
+
+
+class TestKPIComputation:
+    """Тесты для F5.2 — KPI computation."""
+
+    def test_psd_passing_at_size(self):
+        """passing_at_size() интерполирует % прохода."""
+        psd = StreamPSD(
+            points=[
+                (0.01, 5.0),
+                (0.063, 25.0),  # 240 mesh
+                (0.1, 40.0),
+                (0.5, 75.0),
+                (1.0, 90.0),
+            ]
+        )
+        # Точное значение в точке
+        assert abs(psd.passing_at_size(0.063) - 25.0) < 0.1
+        # Интерполяция между точками
+        passing_at_0_2 = psd.passing_at_size(0.2)
+        assert 40.0 < passing_at_0_2 < 75.0
+
+    def test_psd_get_passing_240_mesh(self):
+        """get_passing_240_mesh() возвращает % при 63 мкм."""
+        psd = StreamPSD.from_f80(1.0)  # F80 = 1мм
+        passing_240 = psd.get_passing_240_mesh()
+        # Должно быть низкое значение (крупный материал)
+        assert passing_240 < 50.0
+        assert passing_240 >= 0.0
+
+    def test_psd_p98_property(self):
+        """P98 свойство работает."""
+        psd = StreamPSD(
+            points=[
+                (10.0, 20.0),
+                (50.0, 50.0),
+                (100.0, 80.0),
+                (200.0, 98.0),
+                (300.0, 100.0),
+            ]
+        )
+        assert psd.p98 is not None
+        assert 195 < psd.p98 < 210  # Близко к 200
+
+    def test_product_unit_extended_kpi(self):
+        """ProductUnit выдаёт расширенные KPI."""
+        psd = StreamPSD.from_f80(1.0)
+        stream = Stream(
+            id="test",
+            mass_tph=100.0,
+            solids_pct=70.0,
+            psd=psd,
+        )
+        unit = ProductUnit(node_id="p1", node_type="product", params={})
+        result = unit.calculate({"in": stream})
+
+        assert result.error is None
+        kpi = result.kpi
+        assert "product_tph" in kpi
+        assert "p80_mm" in kpi
+        assert "p50_mm" in kpi
+        assert "p98_mm" in kpi
+        assert "passing_240_mesh_pct" in kpi
+
+    def test_feed_unit_extended_kpi(self):
+        """FeedUnit выдаёт расширенные KPI."""
+        unit = FeedUnit(node_id="f1", node_type="feed", params={"tph": 100.0, "f80_mm": 50.0})
+        result = unit.calculate({})
+
+        assert result.error is None
+        kpi = result.kpi
+        assert "feed_tph" in kpi
+        assert "f80_mm" in kpi
+        assert "f50_mm" in kpi
+
+    def test_global_kpi_extended(self):
+        """Глобальные KPI включают P50, P98, passing_240."""
+        nodes = [
+            {"id": "f1", "data": {"type": "feed", "params": {"tph": 100, "f80_mm": 50}}},
+            {"id": "p1", "data": {"type": "product"}},
+        ]
+        edges = [
+            {
+                "id": "e1",
+                "source": "f1",
+                "target": "p1",
+                "sourceHandle": "out",
+                "targetHandle": "in",
+            },
+        ]
+
+        graph = FlowsheetGraph.from_flowsheet_data(nodes, edges)
+        executor = FlowsheetExecutor(graph)
+        result = executor.execute()
+
+        assert result.success
+        kpi = result.global_kpi
+
+        assert "total_feed_tph" in kpi
+        assert "feed_f80_mm" in kpi
+        assert "product_p80_mm" in kpi
+        assert "product_p50_mm" in kpi
+        assert "product_p98_mm" in kpi
+        assert "product_passing_240_mesh_pct" in kpi
+
+    def test_circulating_load_with_recycle(self):
+        """Circulating Load вычисляется для схемы с рециклом."""
+        # Схема: Feed -> Mill -> Cyclone -> Product
+        #                    ^    |
+        #                    +----+ underflow (recycle)
+        nodes = [
+            {"id": "f1", "data": {"type": "feed", "params": {"tph": 100, "f80_mm": 5}}},
+            {
+                "id": "m1",
+                "data": {
+                    "type": "ball_mill",
+                    "params": {"power_kw": 500, "reduction_ratio": 5},
+                },
+            },
+            {
+                "id": "cy1",
+                "data": {
+                    "type": "hydrocyclone",
+                    "params": {"d50c_mm": 0.3, "split_to_underflow": 0.7},
+                },
+            },
+            {"id": "p1", "data": {"type": "product"}},
+        ]
+        edges = [
+            {
+                "id": "e1",
+                "source": "f1",
+                "target": "m1",
+                "sourceHandle": "out",
+                "targetHandle": "feed",
+            },
+            {
+                "id": "e2",
+                "source": "m1",
+                "target": "cy1",
+                "sourceHandle": "out",
+                "targetHandle": "feed",
+            },
+            {
+                "id": "e3",
+                "source": "cy1",
+                "target": "p1",
+                "sourceHandle": "overflow",
+                "targetHandle": "in",
+            },
+            {
+                "id": "e4",
+                "source": "cy1",
+                "target": "m1",
+                "sourceHandle": "underflow",
+                "targetHandle": "feed",
+            },  # Recycle!
+        ]
+
+        graph = FlowsheetGraph.from_flowsheet_data(nodes, edges)
+        executor = FlowsheetExecutor(graph)
+        result = executor.execute()
+
+        assert result.success
+        assert result.converged
+        assert result.iterations > 1  # Итеративное решение
+
+        kpi = result.global_kpi
+        # Circulating Load должен быть рассчитан
+        assert "circulating_load_pct" in kpi
+        # При split_to_underflow=0.7, CL зависит от конвергенции
+        # Проверяем что значение разумное (> 0)
+        assert kpi["circulating_load_pct"] >= 100  # Значимая циркуляция
+
+    def test_psd_to_dict_extended(self):
+        """StreamPSD.to_dict() включает все метрики."""
+        psd = StreamPSD.from_f80(10.0)
+        d = psd.to_dict()
+
+        assert "points" in d
+        assert "p80_mm" in d
+        assert "p50_mm" in d
+        assert "p98_mm" in d
+        assert "p20_mm" in d
+        assert "passing_240_mesh_pct" in d
