@@ -4,7 +4,7 @@
  * Использует React Flow для визуального построения флоушита.
  */
 
-import { useCallback, useRef, DragEvent, useState } from "react";
+import { useCallback, useRef, DragEvent, useState, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -23,8 +23,9 @@ import "@xyflow/react/dist/style.css";
 
 import { nodeTypes } from "./nodeTypes";
 import { NodePalette } from "./NodePalette";
+import { NodePropertyPanel } from "./NodePropertyPanel";
 import { getEquipmentConfig } from "./equipmentConfig";
-import type { FlowsheetNode, FlowsheetEdge, EquipmentType } from "./types";
+import type { FlowsheetNode, FlowsheetEdge, FlowsheetNodeData, EquipmentType } from "./types";
 
 /**
  * Начальные узлы для демонстрации
@@ -146,6 +147,13 @@ function FlowsheetCanvasInner({
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowsheetNode>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowsheetEdge>(initialEdges);
   const [isDirty, setIsDirty] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Получить выбранный узел
+  const selectedNode = useMemo(
+    () => nodes.find((n) => n.id === selectedNodeId),
+    [nodes, selectedNodeId],
+  );
 
   // Счётчик для генерации ID
   const nodeIdCounter = useRef(100);
@@ -220,9 +228,55 @@ function FlowsheetCanvasInner({
   }, []);
 
   /**
+   * Обработка выбора узла
+   */
+  const onSelectionChange = useCallback(({ nodes: selectedNodes }: { nodes: FlowsheetNode[] }) => {
+    if (selectedNodes.length === 1) {
+      setSelectedNodeId(selectedNodes[0].id);
+    } else {
+      setSelectedNodeId(null);
+    }
+  }, []);
+
+  /**
+   * Обновление данных узла (из property panel)
+   */
+  const handleNodeDataChange = useCallback(
+    (nodeId: string, dataUpdate: Partial<FlowsheetNodeData>) => {
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: { ...node.data, ...dataUpdate },
+            };
+          }
+          return node;
+        }),
+      );
+      setIsDirty(true);
+    },
+    [setNodes],
+  );
+
+  /**
+   * Удаление узла
+   */
+  const handleNodeDelete = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setSelectedNodeId(null);
+      setIsDirty(true);
+    },
+    [setNodes, setEdges],
+  );
+
+  /**
    * Удаление узла по Delete
    */
   const onNodesDelete = useCallback(() => {
+    setSelectedNodeId(null);
     setIsDirty(true);
   }, []);
 
@@ -256,6 +310,7 @@ function FlowsheetCanvasInner({
           onInit={setReactFlowInstance}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
+          onSelectionChange={onSelectionChange}
           nodeTypes={nodeTypes}
           fitView
           snapToGrid
@@ -326,6 +381,15 @@ function FlowsheetCanvasInner({
           )}
         </ReactFlow>
       </div>
+
+      {/* Property Panel (right side) */}
+      {!readOnly && selectedNode && (
+        <NodePropertyPanel
+          node={selectedNode}
+          onNodeDataChange={handleNodeDataChange}
+          onNodeDelete={handleNodeDelete}
+        />
+      )}
     </div>
   );
 }
