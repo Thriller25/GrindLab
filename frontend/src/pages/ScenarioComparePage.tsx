@@ -12,6 +12,7 @@ import {
   ProjectDashboardResponse,
 } from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
+import { ScenarioPSDComparison } from "../components/ScenarioPSDComparison";
 import {
   DEFAULT_KPI_META,
   GoalType,
@@ -744,6 +745,52 @@ export const ScenarioComparePage = () => {
     return initial;
   }, [comparisonMetrics]);
 
+  const scenarioPSDData = useMemo(() => {
+    const items = [];
+
+    if (baselineRunOption && baselineRunOption.result_json?.streams) {
+      const streams = baselineRunOption.result_json.streams;
+      const streamsList = Object.values(streams) as any[];
+      const productStream = streamsList.find((s: any) => s.stream_type === "product") ?? streamsList[0];
+      if (productStream?.material?.psd?.points) {
+        const psd = productStream.material.psd;
+        items.push({
+          name: `Базовый: ${baselineScenario?.name || "без имени"}`,
+          psd: {
+            sizes_mm: psd.points.map((p: any) => p.size_mm),
+            cum_passing: psd.points.map((p: any) => p.cum_passing),
+            p80: psd.p80,
+            p50: psd.p50,
+          },
+          color: "#6b7280",
+          strokeDasharray: "5 5",
+        });
+      }
+    }
+
+    if (scenarioRunOption && scenarioRunOption.result_json?.streams) {
+      const streams = scenarioRunOption.result_json.streams;
+      const streamsList = Object.values(streams) as any[];
+      const productStream = streamsList.find((s: any) => s.stream_type === "product") ?? streamsList[0];
+      if (productStream?.material?.psd?.points) {
+        const psd = productStream.material.psd;
+        items.push({
+          name: `Сценарий: ${selectedScenario?.name || "без имени"}`,
+          psd: {
+            sizes_mm: psd.points.map((p: any) => p.size_mm),
+            cum_passing: psd.points.map((p: any) => p.cum_passing),
+            p80: psd.p80,
+            p50: psd.p50,
+          },
+          color: "#3b82f6",
+          strokeDasharray: undefined,
+        });
+      }
+    }
+
+    return items;
+  }, [baselineRunOption, scenarioRunOption, baselineScenario?.name, selectedScenario?.name]);
+
   const topImprovements = useMemo(
     () =>
       comparisonMetrics
@@ -1368,6 +1415,21 @@ export const ScenarioComparePage = () => {
                     </label>
                   </div>
                   {renderComparisonTable(filteredMetrics)}
+
+                  {scenarioPSDData.length > 0 && (
+                    <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #e5e7eb" }}>
+                      <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Сравнение гранулометрического состава</h3>
+                      <p className="section-subtitle" style={{ marginBottom: "1rem" }}>
+                        Визуальное сравнение кривых прохода (PSD) для сценариев
+                      </p>
+                      <ScenarioPSDComparison
+                        scenarios={scenarioPSDData}
+                        title="Кривые PSD по сценариям"
+                        height={350}
+                        showReferenceLines={true}
+                      />
+                    </div>
+                  )}
                 </section>
               )}
             </section>

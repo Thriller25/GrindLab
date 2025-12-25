@@ -129,8 +129,8 @@ Backend:          Frontend:
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
 | F8.1 | PSD plots (включая P240) | Frontend | P0 | ✅ Done |
-| F8.2 | Fact vs Model plots | Frontend | P1 | 📋 TODO |
-| F8.3 | Scenario comparison plots | Frontend | P1 | 📋 TODO |
+| F8.2 | Fact vs Model plots | Frontend | P1 | ✅ Done |
+| F8.3 | Scenario comparison plots | Frontend | P1 | 🔄 In Progress |
 | F8.4 | Export package (PNG + CSV/Excel) | Backend+Frontend | P1 | 📋 TODO |
 
 #### EP9: Platform (S0-S2)
@@ -205,6 +205,13 @@ Backend:          Frontend:
 ---
 
 ## 📝 Changelog
+
+### 2025-12-25 (F8.2 Complete — Fact vs Model Plots)
+- ✅ F8.2 Backend: Add FactPSD schema to CalcInput
+- ✅ F8.2 Frontend: Dual PSD charts (fact vs model) with P80 delta metrics
+- ✅ F8.2 Demo data: 7-point fact PSD curve sample (p80=190µm)
+- ✅ All 315 backend tests passing, frontend build successful
+- 🚀 Starting F8.3 (Scenario comparison plots)
 
 ### 2025-12-25 (EP4 Complete — Flowsheet Designer MVP)
 - ✅ F4.1 Flowsheet editor: node graph (React Flow)
