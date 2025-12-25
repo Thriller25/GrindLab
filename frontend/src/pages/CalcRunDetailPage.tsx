@@ -28,6 +28,9 @@ const metricLabelWithUnit = (metric: MetricConfig) =>
 const formatNumber = (value: number | null | undefined, precision: number) =>
   value == null ? MISSING_VALUE_TEXT : value.toFixed(precision);
 
+const formatMm = (value: number | null | undefined) =>
+  value == null ? MISSING_VALUE_TEXT : `${value.toFixed(3)} мм`;
+
 const formatDateTime = (value?: string | null) =>
   value
     ? new Date(value).toLocaleString("ru-RU", {
@@ -84,6 +87,39 @@ function extractPSDFromStreams(resultJson: any): PSDData[] {
   }
 
   return psdDatasets;
+}
+
+function pickProductPSD(resultJson: any): PSDData | null {
+  if (!resultJson || !resultJson.streams) return null;
+
+  const streams = Object.values(resultJson.streams as Record<string, StreamData>);
+  const hasPoints = (stream: StreamData) => Boolean(stream.material?.psd?.points?.length);
+  const productStream = streams.find((s) => s.stream_type === "product" && hasPoints(s)) ?? streams.find(hasPoints);
+  if (!productStream?.material?.psd) return null;
+  const psd = productStream.material.psd;
+  return {
+    sizes_mm: psd.points?.map((p) => p.size_mm) ?? [],
+    cum_passing: psd.points?.map((p) => p.cum_passing) ?? [],
+    p80: psd.p80,
+    p50: psd.p50,
+    p240_passing: psd.p240_passing,
+  };
+}
+
+/**
+ * Extract fact PSD from input_json.fact_psd
+ */
+function pickFactPSD(inputJson: any): PSDData | null {
+  if (!inputJson?.fact_psd?.points || inputJson.fact_psd.points.length === 0) return null;
+
+  const points = inputJson.fact_psd.points as Array<{ size_um: number; pass_pct: number }>;
+  return {
+    sizes_mm: points.map((p) => p.size_um / 1000),
+    cum_passing: points.map((p) => p.pass_pct),
+    p80: inputJson.fact_psd.p80_um ? inputJson.fact_psd.p80_um / 1000 : undefined,
+    p50: inputJson.fact_psd.p50_um ? inputJson.fact_psd.p50_um / 1000 : undefined,
+    p240_passing: undefined,
+  };
 }
 
 const normalizeErrorMessage = (message?: string | null) => {
@@ -195,6 +231,28 @@ export const CalcRunDetailPage = () => {
   const psdDatasets = useMemo(() => {
     if (!meta?.result_json) return [];
     return extractPSDFromStreams(meta.result_json);
+  }, [meta]);
+
+  const productPsd = useMemo(() => {
+    if (!meta?.result_json) return null;
+    return pickProductPSD(meta.result_json);
+  }, [meta]);
+  const targetP80Mm = useMemo(() => {
+    const raw =
+      meta?.input_json?.target_p80_microns ??
+      meta?.input_json?.target_p80_um;
+
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw / 1000;
+    if (typeof raw === "string") {
+      const num = Number(raw);
+      if (Number.isFinite(num)) return num / 1000;
+    }
+    return null;
+  }, [meta]);
+
+  const factPsd = useMemo(() => {
+    if (!meta?.input_json) return null;
+    return pickFactPSD(meta.input_json);
   }, [meta]);
 
   const metrics = useMemo<MetricConfig[]>(() => {
@@ -426,6 +484,70 @@ export const CalcRunDetailPage = () => {
               {kpiError && <div className="alert error">{kpiError}</div>}
               {renderKpiTable()}
             </section>
+
+            {(productPsd || factPsd) && (
+              <section className="section">
+                <div className="section-heading">
+                  <h2>Fact vs Model (P80)</h2>
+                  <p className="section-subtitle">
+                    {factPsd
+                      ? "Сравнение измеренной PSD с расчётной моделью и целевым P80."
+                      : "Сравнение расчётной PSD продукта с целевым P80."}
+                  </p>
+                </div>
+                <div className="grid" style={{ gap: 12, marginBottom: 16 }}>
+                  {factPsd && (
+                    <>
+                      <div className="stat">
+                        <div className="stat-label">Fact P80</div>
+                        <div className="stat-value">{formatMm(factPsd.p80)}</div>
+                      </div>
+                      <div className="stat">
+                        <div className="stat-label">Model P80</div>
+                        <div className="stat-value">{formatMm(productPsd?.p80)}</div>
+                      </div>
+                      <div className="stat">
+                        <div className="stat-label">Δ P80 (fact - model)</div>
+                        <div className="stat-value">{formatMm(factPsd.p80 != null && productPsd?.p80 != null ? factPsd.p80 - productPsd.p80 : null)}</div>
+                      </div>
+                    </>
+                  )}
+                  {!factPsd && productPsd && (
+                    <>
+                      <div className="stat">
+                        <div className="stat-label">Model P80</div>
+                        <div className="stat-value">{formatMm(productPsd.p80)}</div>
+                      </div>
+                      <div className="stat">
+                        <div className="stat-label">Target P80</div>
+                        <div className="stat-value">{formatMm(targetP80Mm)}</div>
+                      </div>
+                      <div className="stat">
+                        <div className="stat-label">Δ P80 (model - target)</div>
+                        <div className="stat-value">{formatMm(productPsd.p80 != null && targetP80Mm != null ? productPsd.p80 - targetP80Mm : null)}</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {factPsd && productPsd ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 16 }}>
+                    <div>
+                      <h3 style={{ fontSize: "0.9rem", marginBottom: "0.5rem", color: "#666" }}>Fact PSD</h3>
+                      <PSDChart data={factPsd} height={300} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: "0.9rem", marginBottom: "0.5rem", color: "#666" }}>Model PSD (с целевым P80)</h3>
+                      <PSDChart data={productPsd} targetP80Mm={targetP80Mm ?? undefined} height={300} />
+                    </div>
+                  </div>
+                ) : productPsd ? (
+                  <>
+                    <PSDChart data={productPsd} targetP80Mm={targetP80Mm ?? undefined} height={360} />
+                    {!targetP80Mm && <div className="muted" style={{ marginTop: 8 }}>Целевой P80 не указан в входных данных.</div>}
+                  </>
+                ) : null}
+              </section>
+            )}
 
             {psdDatasets.length > 0 && (
               <section className="section">

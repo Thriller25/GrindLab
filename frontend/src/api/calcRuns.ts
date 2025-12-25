@@ -1,6 +1,26 @@
 import { api } from "./client";
 import type { FlowsheetNode, FlowsheetEdge } from "../features/flowsheet";
 
+export type PSDPoint = {
+  size_um: number;
+  pass_pct: number;
+};
+
+export type FactPSD = {
+  points: PSDPoint[];
+  p80_um?: number | null;
+  p50_um?: number | null;
+};
+
+export type CalcInput = {
+  feed_tph?: number | null;
+  target_p80_microns?: number | null;
+  ore_hardness_ab?: number | null;
+  ore_hardness_ta?: number | null;
+  water_fraction?: number | null;
+  fact_psd?: FactPSD | null;
+};
+
 export type RunAndSavePayload = {
   flowsheet_version_id: string;
   project_id?: number;
@@ -30,7 +50,7 @@ export type CalcRunRead = {
   updated_at: string;
   comment?: string | null;
   error_message?: string | null;
-  input_json?: any;
+  input_json?: CalcInput | null;
   result_json?: any;
 };
 

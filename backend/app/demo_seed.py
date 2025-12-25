@@ -273,6 +273,11 @@ def _build_demo_input_json(
         "flowsheet_version_id": str(flowsheet_version_id),
         "scenario_name": scenario_name,
         "project_id": project_id,
+        "feed_tph": 500.0,
+        "target_p80_microns": 180.0,
+        "ore_hardness_ab": 12.5,
+        "ore_hardness_ta": 24.8,
+        "water_fraction": 0.15,
         "feed": {"tonnage_tph": 500, "p80_mm": 0.18, "density_t_per_m3": 2.6},
         "mill": {
             "type": "SAG",
@@ -287,6 +292,19 @@ def _build_demo_input_json(
             "circulating_load_percent": 250,
         },
         "options": {"use_baseline_run_id": None},
+        "fact_psd": {
+            "points": [
+                {"size_um": 1000.0, "pass_pct": 100.0},
+                {"size_um": 500.0, "pass_pct": 95.0},
+                {"size_um": 250.0, "pass_pct": 78.0},
+                {"size_um": 180.0, "pass_pct": 50.0},
+                {"size_um": 100.0, "pass_pct": 28.0},
+                {"size_um": 50.0, "pass_pct": 10.0},
+                {"size_um": 10.0, "pass_pct": 1.0},
+            ],
+            "p80_um": 190.0,
+            "p50_um": 105.0,
+        },
     }
 
 

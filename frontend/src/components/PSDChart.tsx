@@ -29,6 +29,8 @@ export interface PSDChartProps {
   data: PSDData;
   title?: string;
   height?: number;
+  /** Опциональная целевая P80 (мм) для сравнения факта/модели */
+  targetP80Mm?: number;
 }
 
 /**
@@ -52,7 +54,7 @@ function prepareChartData(data: PSDData) {
   }));
 }
 
-export function PSDChart({ data, title = "Гранулометрический состав", height = 400 }: PSDChartProps) {
+export function PSDChart({ data, title = "Гранулометрический состав", height = 400, targetP80Mm }: PSDChartProps) {
   const chartData = prepareChartData(data);
 
   return (
@@ -99,9 +101,19 @@ export function PSDChart({ data, title = "Гранулометрический �
           {data.p80 && (
             <ReferenceLine
               x={data.p80}
-              stroke="#ef4444"
-              strokeDasharray="5 5"
-              label={{ value: `P80: ${formatSize(data.p80)}`, position: "top" }}
+              stroke="#f44336"
+              strokeDasharray="3 3"
+              label={{ position: "top", value: `P80: ${formatSize(data.p80)}` }}
+            />
+          )}
+
+          {/* Target P80 (fact/spec) */}
+          {targetP80Mm != null && (
+            <ReferenceLine
+              x={targetP80Mm}
+              stroke="#9e9e9e"
+              strokeDasharray="4 2"
+              label={{ position: "top", value: `Target P80: ${formatSize(targetP80Mm)}` }}
             />
           )}
 
