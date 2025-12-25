@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime
 from typing import Optional
+from uuid import UUID as _UUID
 
 from app import models
+from app.core.engine.executor import execute_flowsheet
 from app.db import get_db
 from app.routers.auth import get_current_user
 from app.schemas.calc_io import CalcInput, CalcResultSummary
@@ -17,7 +19,8 @@ from app.schemas.calc_run import (
     CalcRunRead,
 )
 from app.services.calc_service import get_calc_scenario_or_404, get_flowsheet_version_or_404
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -289,4 +292,90 @@ def get_calc_run_by_id(
     calc_run = db.get(models.CalcRun, calc_run_id)
     if calc_run is None:
         raise HTTPException(status_code=404, detail="Calc run not found")
+    return CalcRunRead.model_validate(calc_run, from_attributes=True)
+
+
+# ============================================================================
+# Run-and-save flowsheet simulation (F5.3)
+# ============================================================================
+
+
+class RunAndSaveRequest(BaseModel):
+    flowsheet_version_id: _UUID = Field(..., description="Target flowsheet version id")
+    project_id: Optional[int] = Field(None, description="Optional project id")
+    scenario_id: Optional[_UUID] = Field(None, description="Optional scenario id")
+    scenario_name: Optional[str] = None
+    comment: Optional[str] = None
+    nodes: list[dict]
+    edges: list[dict]
+
+
+@router.post(
+    "/run-and-save",
+    response_model=CalcRunRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Execute flowsheet and save result as calc run",
+)
+def run_and_save(
+    body: RunAndSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> CalcRunRead:
+    # Validate target flowsheet version exists
+    get_flowsheet_version_or_404(db, body.flowsheet_version_id)
+
+    started_at = datetime.utcnow()
+
+    # Execute flowsheet via core engine
+    result = execute_flowsheet(nodes_data=body.nodes, edges_data=body.edges)
+
+    status_value = "success" if result.get("success") else "error"
+
+    # Map KPI to dashboard-compatible fields
+    global_kpi: dict = result.get("global_kpi") or {}
+    kpi_for_dashboard: dict = {
+        "throughput_tph": global_kpi.get("total_product_tph"),
+        "product_p80_mm": global_kpi.get("product_p80_mm"),
+        # keep legacy key expected by dashboards
+        "specific_energy_kwh_per_t": global_kpi.get("specific_energy_kwh_t"),
+        "circulating_load_percent": global_kpi.get("circulating_load_pct"),
+    }
+
+    result_json: dict = {
+        "model_version": "flowsheet_engine_v1",
+        "kpi": {k: v for k, v in kpi_for_dashboard.items() if v is not None},
+        "global_kpi": global_kpi,
+        "node_kpi": result.get("node_kpi") or {},
+        "streams": result.get("streams") or {},
+        "warnings": result.get("warnings") or [],
+        "errors": result.get("errors") or [],
+    }
+
+    calc_run = models.CalcRun(
+        flowsheet_version_id=body.flowsheet_version_id,
+        scenario_id=body.scenario_id,
+        scenario_name=body.scenario_name,
+        project_id=body.project_id,
+        comment=body.comment,
+        started_by_user_id=current_user.id if getattr(current_user, "id", None) else None,
+        status=status_value,
+        started_at=started_at,
+        finished_at=datetime.utcnow(),
+        input_json={
+            "model_version": "flowsheet_engine_v1",
+            "nodes": body.nodes,
+            "edges": body.edges,
+        },
+        result_json=result_json,
+        error_message=(
+            "; ".join(result.get("errors", []))
+            if result.get("errors") and not result.get("success")
+            else None
+        ),
+    )
+
+    db.add(calc_run)
+    db.commit()
+    db.refresh(calc_run)
+
     return CalcRunRead.model_validate(calc_run, from_attributes=True)
