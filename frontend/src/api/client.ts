@@ -104,6 +104,35 @@ export type GrindMvpKpi = {
 
 export type GrindMvpSizePoint = { size_mm: number; cum_percent: number };
 
+// PSD data structure
+export interface PSDPoint {
+  size_mm: number;
+  cum_passing: number;
+}
+
+export interface PSDData {
+  sizes_mm: number[];
+  cum_passing: number[];
+  p80?: number;
+  p50?: number;
+  p240_passing?: number;
+}
+
+export interface StreamData {
+  name?: string;
+  stream_type?: string;
+  material?: {
+    solids_tph?: number;
+    water_tph?: number;
+    psd?: {
+      points?: PSDPoint[];
+      p80?: number;
+      p50?: number;
+      p240_passing?: number;
+    };
+  };
+}
+
 export interface GrindMvpBaselineComparison {
   baseline_run_id: string;
   throughput_delta_tph?: number | null;

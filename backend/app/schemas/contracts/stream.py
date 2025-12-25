@@ -154,3 +154,35 @@ class Stream(BaseModel):
             mat_info += "]"
 
         return f"{self.name or self.id.hex[:8]}: {self.stream_type.value}{mat_info}"
+
+    def to_dict(self) -> dict:
+        """Сериализация в dict для result_json."""
+        result = {
+            "id": str(self.id),
+            "name": self.name,
+            "stream_type": self.stream_type.value,
+        }
+
+        if self.material:
+            material_dict = {
+                "solids_tph": self.material.solids_tph,
+                "water_tph": self.material.water_tph,
+                "total_tph": self.material.total_tph,
+            }
+
+            if self.material.psd:
+                psd_dict = {
+                    "points": [
+                        {"size_mm": p.size_mm, "cum_passing": p.cum_passing}
+                        for p in self.material.psd.points
+                    ],
+                    "p80": self.material.psd.p80,
+                    "p50": self.material.psd.p50,
+                }
+                if hasattr(self.material.psd, "p240_passing"):
+                    psd_dict["p240_passing"] = self.material.psd.p240_passing
+                material_dict["psd"] = psd_dict
+
+            result["material"] = material_dict
+
+        return result

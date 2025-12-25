@@ -128,7 +128,7 @@ Backend:          Frontend:
 #### EP8: Visualization & Reporting (S4-S5)
 | ID | Feature | Component | Priority | Status |
 |----|---------|-----------|----------|--------|
-| F8.1 | PSD plots (включая P240) | Frontend | P0 | 📋 TODO |
+| F8.1 | PSD plots (включая P240) | Frontend | P0 | ✅ Done |
 | F8.2 | Fact vs Model plots | Frontend | P1 | 📋 TODO |
 | F8.3 | Scenario comparison plots | Frontend | P1 | 📋 TODO |
 | F8.4 | Export package (PNG + CSV/Excel) | Backend+Frontend | P1 | 📋 TODO |
