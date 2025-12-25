@@ -14,7 +14,7 @@ import {
   StreamData,
 } from "../api/client";
 import BackToHomeButton from "../components/BackToHomeButton";
-import PSDChart from "../components/PSDChart";
+import { PSDChart } from "../components/PSDChart";
 import { DEFAULT_KPI_META, ResolvedKpiMeta, resolveKpiMeta } from "../features/kpi/kpiRegistry";
 import { hasAuth } from "../auth/authProvider";
 
