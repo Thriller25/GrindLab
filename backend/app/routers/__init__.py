@@ -14,6 +14,7 @@ from . import (
 from .flowsheet_versions import router as flowsheet_versions_router
 from .flowsheets import router as flowsheets_router
 from .materials import router as materials_router
+from .materials_library import router as materials_library_router
 from .plants import router as plants_router
 from .units import router as units_router
 
@@ -25,6 +26,7 @@ api_router.include_router(
 )
 api_router.include_router(units_router, prefix="/units", tags=["units"])
 api_router.include_router(materials_router)
+api_router.include_router(materials_library_router)
 
 __all__ = [
     "api_router",
@@ -33,6 +35,7 @@ __all__ = [
     "flowsheet_versions_router",
     "units_router",
     "materials_router",
+    "materials_library_router",
     "calc",
     "calc_runs",
     "calc_scenarios",

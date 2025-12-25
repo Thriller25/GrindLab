@@ -79,6 +79,10 @@ export interface FlowsheetNodeData {
   parameters: Record<string, number | string | boolean>;
   status?: "idle" | "running" | "success" | "error";
   results?: Record<string, unknown>;
+  /** ID назначенного материала (для feed узлов) */
+  materialId?: string;
+  /** Название назначенного материала */
+  materialName?: string;
 }
 
 /**
@@ -124,4 +128,27 @@ export interface CanvasState {
   selectedEdgeId: string | null;
   isDirty: boolean;
   isRunning: boolean;
+}
+
+// ==================== Material Types ====================
+
+/**
+ * Точка PSD (размер - % прохода)
+ */
+export interface PSDPoint {
+  size_mm: number;
+  cum_passing: number;
+}
+
+/**
+ * Материал для назначения на feed
+ */
+export interface MaterialSummary {
+  id: string;
+  name: string;
+  source?: string;
+  solids_tph?: number;
+  p80_mm?: number;
+  psd?: PSDPoint[];
+  createdAt?: string;
 }
