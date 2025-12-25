@@ -82,16 +82,46 @@ class StreamPSD:
         return self.points[-1][0]
 
     @property
+    def p98(self) -> Optional[float]:
+        """Размер при 98% прохождения (близко к макс. размеру)."""
+        return self.get_pxx(98.0)
+
+    @property
     def p80(self) -> Optional[float]:
+        """Размер при 80% прохождения (стандартный P80)."""
         return self.get_pxx(80.0)
 
     @property
     def p50(self) -> Optional[float]:
+        """Размер при 50% прохождения (медиана)."""
         return self.get_pxx(50.0)
 
     @property
     def p20(self) -> Optional[float]:
+        """Размер при 20% прохождения."""
         return self.get_pxx(20.0)
+
+    def passing_at_size(self, size_mm: float) -> float:
+        """
+        Получить % прохождения при заданном размере.
+
+        Используется для расчёта P240 (240 mesh = 0.063 мм).
+
+        Args:
+            size_mm: Размер в мм
+
+        Returns:
+            Cumulative passing percent (0-100)
+        """
+        return self._interp_at_size(size_mm)
+
+    def get_passing_240_mesh(self) -> float:
+        """
+        Получить % прохода через сито 240 mesh (63 мкм = 0.063 мм).
+
+        Стандартный KPI для циркуляции в мельницах.
+        """
+        return self.passing_at_size(0.063)
 
     def scale_by_factor(self, factor: float) -> "StreamPSD":
         """Масштабировать PSD — уменьшить все размеры в factor раз."""
@@ -143,8 +173,11 @@ class StreamPSD:
     def to_dict(self) -> dict:
         return {
             "points": [{"size_mm": s, "cum_passing_pct": c} for s, c in self.points],
+            "p98_mm": self.p98,
             "p80_mm": self.p80,
             "p50_mm": self.p50,
+            "p20_mm": self.p20,
+            "passing_240_mesh_pct": round(self.get_passing_240_mesh(), 1),
         }
 
 

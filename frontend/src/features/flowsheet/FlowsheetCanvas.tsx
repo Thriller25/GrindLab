@@ -26,6 +26,7 @@ import { NodePalette } from "./NodePalette";
 import { NodePropertyPanel } from "./NodePropertyPanel";
 import { getEquipmentConfig } from "./equipmentConfig";
 import type { FlowsheetNode, FlowsheetEdge, FlowsheetNodeData, EquipmentType } from "./types";
+import { runSimulation } from "../../api/simulation";
 
 /**
  * Начальные узлы для демонстрации
@@ -148,6 +149,9 @@ function FlowsheetCanvasInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowsheetEdge>(initialEdges);
   const [isDirty, setIsDirty] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [globalKpi, setGlobalKpi] = useState<Record<string, number> | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
   // Получить выбранный узел
   const selectedNode = useMemo(
@@ -292,6 +296,27 @@ function FlowsheetCanvasInner({
     setIsDirty(false);
   }, [nodes, edges, onSave]);
 
+  /**
+   * Запуск симуляции (EP5 API)
+   */
+  const handleRun = useCallback(async () => {
+    setIsRunning(true);
+    setRunError(null);
+    setGlobalKpi(null);
+    try {
+      const result = await runSimulation(nodes, edges);
+      if (!result.success) {
+        setRunError((result.errors && result.errors[0]) || "Расчёт завершился с ошибкой");
+      } else {
+        setGlobalKpi(result.global_kpi || {});
+      }
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsRunning(false);
+    }
+  }, [nodes, edges]);
+
   return (
     <div style={{ display: "flex", height: "100%", width: "100%" }}>
       {/* Palette */}
@@ -377,6 +402,75 @@ function FlowsheetCanvasInner({
               >
                 💾 Сохранить
               </button>
+            </Panel>
+          )}
+
+          {/* Run Button */}
+          {!readOnly && (
+            <Panel position="bottom-right">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  onClick={handleRun}
+                  disabled={isRunning}
+                  style={{
+                    padding: "8px 16px",
+                    background: isRunning ? "#e5e7eb" : "#10b981",
+                    color: isRunning ? "#9ca3af" : "#ffffff",
+                    border: "none",
+                    borderRadius: 8,
+                    fontWeight: 500,
+                    cursor: isRunning ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                  }}
+                >
+                  {isRunning ? "Рассчитываем…" : "▶ Рассчитать"}
+                </button>
+
+                {/* KPI summary */}
+                {runError && (
+                  <div style={{ color: "#b91c1c", background: "#fee2e2", padding: 8, borderRadius: 6, maxWidth: 360 }}>
+                    {runError}
+                  </div>
+                )}
+                {!!globalKpi && (
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: 12,
+                      minWidth: 260,
+                      maxWidth: 360,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>Результаты расчёта</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
+                      {[
+                        ["total_feed_tph", "Питание, т/ч"],
+                        ["total_product_tph", "Продукт, т/ч"],
+                        ["product_p80_mm", "P80, мм"],
+                        ["product_p50_mm", "P50, мм"],
+                        ["product_p98_mm", "P98, мм"],
+                        ["product_passing_240_mesh_pct", "% -240 mesh"],
+                        ["circulating_load_pct", "Цирк. нагрузка, %"],
+                        ["specific_energy_kwh_t", "Удельная энергия, кВт·ч/т"],
+                        ["mass_balance_error_pct", "Баланс массы, %"],
+                      ].map(([key, label]) => (
+                        <>
+                          <div style={{ color: "#6b7280" }}>{label}</div>
+                          <div style={{ textAlign: "right" }}>
+                            {globalKpi && typeof (globalKpi as any)[key] === "number"
+                              ? (globalKpi as any)[key].toFixed(
+                                  key.endsWith("_mm") ? 3 : key.endsWith("_pct") ? 1 : 2,
+                                )
+                              : "—"}
+                          </div>
+                        </>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </Panel>
           )}
         </ReactFlow>
