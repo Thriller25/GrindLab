@@ -4,14 +4,50 @@
  * Интегрирует FlowsheetCanvas с навигацией и сохранением.
  */
 
-import { useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FlowsheetCanvas } from "../features/flowsheet";
+import { fetchCalcScenario } from "../api/client";
 import type { FlowsheetNode, FlowsheetEdge } from "../features/flowsheet";
 
 export const FlowsheetPage = () => {
   const { projectId, scenarioId } = useParams<{ projectId: string; scenarioId?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [flowsheetVersionId, setFlowsheetVersionId] = useState<string | null>(null);
+  const [isLoadingScenario, setIsLoadingScenario] = useState(false);
+
+  /**
+   * Загрузка сценария для получения flowsheet_version_id
+   */
+  useEffect(() => {
+    if (!scenarioId) {
+      // Try to get from URL param
+      const fvId = searchParams.get("flowsheetVersionId");
+      if (fvId) {
+        setFlowsheetVersionId(fvId);
+      }
+      return;
+    }
+
+    setIsLoadingScenario(true);
+    fetchCalcScenario(scenarioId)
+      .then((scenario) => {
+        if (scenario.flowsheet_version_id) {
+          setFlowsheetVersionId(String(scenario.flowsheet_version_id));
+        }
+      })
+      .catch(() => {
+        // Fallback to URL param
+        const fvId = searchParams.get("flowsheetVersionId");
+        if (fvId) {
+          setFlowsheetVersionId(fvId);
+        }
+      })
+      .finally(() => {
+        setIsLoadingScenario(false);
+      });
+  }, [scenarioId, searchParams]);
 
   /**
    * Сохранение схемы (TODO: API интеграция)
@@ -78,6 +114,7 @@ export const FlowsheetPage = () => {
             {scenarioId && ` / Сценарий: ${scenarioId}`}
           </span>
         )}
+        {isLoadingScenario && <span style={{ color: "#6b7280", fontSize: 12 }}>загружаем версию схемы…</span>}
       </header>
 
       {/* Canvas */}
@@ -85,6 +122,7 @@ export const FlowsheetPage = () => {
         <FlowsheetCanvas
           projectId={projectId}
           scenarioId={scenarioId}
+          flowsheetVersionId={flowsheetVersionId || undefined}
           onSave={handleSave}
         />
       </main>
