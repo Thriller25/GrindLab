@@ -4,7 +4,7 @@ annotated-types==0.7.0
 anyio==4.12.0
 click==8.3.1
 colorama==0.4.6
-fastapi==0.124.0
+fastapi==0.127.0
 greenlet==3.3.0
 h11==0.16.0
 httptools==0.7.1
@@ -22,14 +22,14 @@ Pygments==2.19.2
 pytest==9.0.2
 httpx==0.28.1
 python-dotenv==1.2.1
-PyJWT==2.9.0
-python-multipart==0.0.9
+PyJWT==2.10.1
+python-multipart==0.0.21
 PyYAML==6.0.3
-SQLAlchemy==2.0.44
+SQLAlchemy==2.0.45
 starlette==0.50.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
-uvicorn==0.38.0
+uvicorn==0.40.0
 watchfiles==1.1.1
 websockets==15.0.1
 openpyxl==3.1.5
@@ -38,8 +38,8 @@ limits==5.6.0
 structlog==24.4.0
 
 # Development tools
-pre-commit==4.0.1
+pre-commit==4.5.1
 black==24.10.0
-flake8==7.1.1
+flake8==7.3.0
 isort==5.13.2
 pytest-cov==6.0.0
