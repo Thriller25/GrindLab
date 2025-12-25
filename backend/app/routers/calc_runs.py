@@ -357,7 +357,7 @@ def run_and_save(
         scenario_name=body.scenario_name,
         project_id=body.project_id,
         comment=body.comment,
-        started_by_user_id=current_user.id if getattr(current_user, "id", None) else None,
+        started_by_user_id=None,  # TODO: align user ID types (Int vs UUID)
         status=status_value,
         started_at=started_at,
         finished_at=datetime.utcnow(),

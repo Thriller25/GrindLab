@@ -109,7 +109,7 @@ Backend:          Frontend:
 |----|---------|-----------|----------|--------|
 | F5.1 | Execution engine + convergence | Core | P0 | ✅ Done |
 | F5.2 | KPI computation (P80/P50/P240, CL) | Core | P0 | ✅ Done |
-| F5.3 | Run management (RunVersion) | Backend+DB | P0 | 🔶 Partial |
+| F5.3 | Run management (RunVersion) | Backend+DB | P0 | ✅ Done |
 
 #### EP6: Calibration & Validation (S5)
 | ID | Feature | Component | Priority | Status |
