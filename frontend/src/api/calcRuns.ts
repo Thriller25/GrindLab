@@ -54,6 +54,18 @@ export type CalcRunRead = {
   result_json?: any;
 };
 
+export type BatchRunRequest = {
+  flowsheet_version_id: string;
+  scenario_ids: string[];
+  project_id?: number | null;
+  comment?: string | null;
+};
+
+export type BatchRunResponse = {
+  runs: CalcRunRead[];
+  total: number;
+};
+
 export async function runAndSaveFlowsheet(
   flowsheetVersionId: string,
   nodes: FlowsheetNode[],
@@ -76,5 +88,10 @@ export async function runAndSaveFlowsheet(
     })),
   };
   const resp = await api.post<CalcRunRead>("/api/calc-runs/run-and-save", payload);
+  return resp.data;
+}
+
+export async function batchRunScenarios(payload: BatchRunRequest): Promise<BatchRunResponse> {
+  const resp = await api.post<BatchRunResponse>("/api/calc-runs/batch-run", payload);
   return resp.data;
 }

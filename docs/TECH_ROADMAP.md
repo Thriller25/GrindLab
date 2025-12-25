@@ -130,7 +130,7 @@ Backend:          Frontend:
 |----|---------|-----------|----------|--------|
 | F8.1 | PSD plots (включая P240) | Frontend | P0 | ✅ Done |
 | F8.2 | Fact vs Model plots | Frontend | P1 | ✅ Done |
-| F8.3 | Scenario comparison plots | Frontend | P1 | 🔄 In Progress |
+| F8.3 | Scenario comparison plots | Frontend | P1 | ✅ Done |
 | F8.4 | Export package (PNG + CSV/Excel) | Backend+Frontend | P1 | 📋 TODO |
 
 #### EP9: Platform (S0-S2)
@@ -205,6 +205,13 @@ Backend:          Frontend:
 ---
 
 ## 📝 Changelog
+
+### 2025-12-25 (F8.3 Complete — Scenario Comparison PSD Plots)
+- ✅ F8.3 Frontend: ScenarioPSDComparison component for multi-scenario visualization
+- ✅ F8.3 Features: Color-coded curves, reference lines (P80/P50), smart interpolation
+- ✅ F8.3 Integration: Added PSD comparison section to ScenarioComparePage
+- ✅ EP8 (Visualization) 3 of 4 features complete (F8.1, F8.2, F8.3)
+- 📋 Next: F8.4 (Export PNG/CSV) or move to next epic
 
 ### 2025-12-25 (F8.2 Complete — Fact vs Model Plots)
 - ✅ F8.2 Backend: Add FactPSD schema to CalcInput

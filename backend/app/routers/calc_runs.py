@@ -9,6 +9,8 @@ from app.db import get_db
 from app.routers.auth import get_current_user
 from app.schemas.calc_io import CalcInput, CalcResultSummary
 from app.schemas.calc_run import (
+    BatchRunRequest,
+    BatchRunResponse,
     CalcRunCompareResponse,
     CalcRunCompareWithBaselineItem,
     CalcRunCompareWithBaselineResponse,
@@ -379,3 +381,76 @@ def run_and_save(
     db.refresh(calc_run)
 
     return CalcRunRead.model_validate(calc_run, from_attributes=True)
+
+
+@router.post(
+    "/batch-run",
+    response_model=BatchRunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def batch_run_scenarios(
+    body: BatchRunRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user),
+) -> BatchRunResponse:
+    """
+    Run multiple scenarios for a flowsheet version.
+    Executes scenarios sequentially.
+
+    - **flowsheet_version_id**: Flowsheet version to use
+    - **scenario_ids**: List of scenario IDs to execute
+    - **project_id**: Optional project ID for tracking
+    - **comment**: Optional comment for all runs
+    """
+    flowsheet_version = get_flowsheet_version_or_404(body.flowsheet_version_id, db)
+
+    # Validate all scenarios exist
+    scenarios = (
+        db.query(models.CalcScenario)
+        .filter(
+            models.CalcScenario.flowsheet_version_id == body.flowsheet_version_id,
+            models.CalcScenario.id.in_(body.scenario_ids),
+        )
+        .all()
+    )
+
+    if len(scenarios) != len(body.scenario_ids):
+        missing_ids = set(body.scenario_ids) - {s.id for s in scenarios}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Some scenarios not found: {missing_ids}",
+        )
+
+    created_runs = []
+
+    for scenario in scenarios:
+        # Execute flowsheet
+        result = execute_flowsheet(flowsheet_version.flowsheet_json, scenario.default_input_json)
+
+        # Create CalcRun record
+        calc_run = models.CalcRun(
+            flowsheet_version_id=body.flowsheet_version_id,
+            scenario_id=scenario.id,
+            scenario_name=scenario.name,
+            project_id=body.project_id,
+            comment=body.comment or f"Batch run: {scenario.name}",
+            started_by_user_id=current_user.id if current_user else None,
+            status="success" if result.get("success") else "failed",
+            started_at=datetime.utcnow(),
+            finished_at=datetime.utcnow(),
+            input_json=scenario.default_input_json,
+            result_json=CalcResultSummary.model_validate(result) if result.get("success") else None,
+            error_message=(
+                "; ".join(result.get("errors", []))
+                if result.get("errors") and not result.get("success")
+                else None
+            ),
+        )
+
+        db.add(calc_run)
+        db.flush()
+        created_runs.append(CalcRunRead.model_validate(calc_run, from_attributes=True))
+
+    db.commit()
+
+    return BatchRunResponse(runs=created_runs, total=len(created_runs))
