@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useRef, DragEvent, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ReactFlow,
   Background,
@@ -27,6 +28,7 @@ import { NodePropertyPanel } from "./NodePropertyPanel";
 import { getEquipmentConfig } from "./equipmentConfig";
 import type { FlowsheetNode, FlowsheetEdge, FlowsheetNodeData, EquipmentType } from "./types";
 import { runSimulation } from "../../api/simulation";
+import { runAndSaveFlowsheet } from "../../api/calcRuns";
 
 /**
  * Начальные узлы для демонстрации
@@ -132,6 +134,7 @@ const initialEdges: FlowsheetEdge[] = [
 interface FlowsheetCanvasProps {
   projectId?: string;
   scenarioId?: string;
+  flowsheetVersionId?: string;
   readOnly?: boolean;
   onSave?: (nodes: FlowsheetNode[], edges: FlowsheetEdge[]) => void;
 }
@@ -140,9 +143,13 @@ interface FlowsheetCanvasProps {
  * Основной компонент канвы
  */
 function FlowsheetCanvasInner({
+  projectId,
+  scenarioId,
+  flowsheetVersionId,
   readOnly = false,
   onSave,
 }: FlowsheetCanvasProps) {
+  const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowsheetNode, FlowsheetEdge> | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowsheetNode>(initialNodes);
@@ -152,6 +159,8 @@ function FlowsheetCanvasInner({
   const [isRunning, setIsRunning] = useState(false);
   const [globalKpi, setGlobalKpi] = useState<Record<string, number> | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [isSavingRun, setIsSavingRun] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Получить выбранный узел
   const selectedNode = useMemo(
@@ -317,6 +326,35 @@ function FlowsheetCanvasInner({
     }
   }, [nodes, edges]);
 
+  /**
+   * Запуск и сохранение CalcRun (EP5.3 API)
+   */
+  const handleRunAndSave = useCallback(async () => {
+    setIsSavingRun(true);
+    setSaveError(null);
+    try {
+      const fvId = flowsheetVersionId?.toString().trim();
+      if (!fvId) {
+        setSaveError(
+          "Не указана версия схемы (flowsheet_version_id). Откройте страницу через сценарий или добавьте ?flowsheetVersionId=ID в URL.",
+        );
+        return;
+      }
+      const projIdNum = projectId ? Number(projectId) : undefined;
+      const result = await runAndSaveFlowsheet(fvId, nodes, edges, {
+        projectId: projIdNum,
+        scenarioId: scenarioId || undefined,
+      });
+      if (result?.id) {
+        navigate(`/calc-runs/${result.id}`);
+      }
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsSavingRun(false);
+    }
+  }, [flowsheetVersionId, projectId, scenarioId, nodes, edges, navigate]);
+
   return (
     <div style={{ display: "flex", height: "100%", width: "100%" }}>
       {/* Palette */}
@@ -426,12 +464,39 @@ function FlowsheetCanvasInner({
                   {isRunning ? "Рассчитываем…" : "▶ Рассчитать"}
                 </button>
 
-                {/* KPI summary */}
+                {/* Save Run Button */}
+                {projectId && flowsheetVersionId && (
+                  <button
+                    onClick={handleRunAndSave}
+                    disabled={isSavingRun}
+                    style={{
+                      padding: "8px 16px",
+                      background: isSavingRun ? "#e5e7eb" : "#8b5cf6",
+                      color: isSavingRun ? "#9ca3af" : "#ffffff",
+                      border: "none",
+                      borderRadius: 8,
+                      fontWeight: 500,
+                      cursor: isSavingRun ? "not-allowed" : "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                    }}
+                  >
+                    {isSavingRun ? "Сохраняем…" : "💾 Сохранить запуск"}
+                  </button>
+                )}
+
+                {/* Error messages */}
+                {saveError && (
+                  <div style={{ color: "#b91c1c", background: "#fee2e2", padding: 8, borderRadius: 6, maxWidth: 360, fontSize: 13 }}>
+                    {saveError}
+                  </div>
+                )}
                 {runError && (
                   <div style={{ color: "#b91c1c", background: "#fee2e2", padding: 8, borderRadius: 6, maxWidth: 360 }}>
                     {runError}
                   </div>
                 )}
+
+                {/* KPI summary */}
                 {!!globalKpi && (
                   <div
                     style={{

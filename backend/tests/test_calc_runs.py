@@ -6,6 +6,20 @@ from pytest import approx
 from .utils import create_flowsheet, create_flowsheet_version, create_plant
 
 
+def _register_and_token(
+    client: TestClient, email: str, password: str = "secret123"
+) -> tuple[str, str]:
+    client.post(
+        "/api/auth/register", json={"email": email, "password": password, "full_name": "Test User"}
+    )
+    token_resp = client.post(
+        "/api/auth/token",
+        data={"username": email, "password": password},
+    )
+    assert token_resp.status_code == 200
+    return email, token_resp.json()["access_token"]
+
+
 def test_calc_run_happy_path(client: TestClient):
     plant_id = create_plant(client)
     flowsheet_id = create_flowsheet(client, plant_id)
@@ -221,3 +235,65 @@ def test_compare_with_baseline_invalid_ids(client: TestClient):
         params=[("baseline_run_id", str(uuid.uuid4())), ("run_ids", str(uuid.uuid4()))],
     )
     assert resp.status_code == 404
+
+
+def test_run_and_save_with_flowsheet_nodes(client: TestClient):
+    """Test F5.3 run-and-save endpoint with flowsheet nodes/edges"""
+    _, token = _register_and_token(client, "run-and-save@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    plant_id = create_plant(client)
+    flowsheet_id = create_flowsheet(client, plant_id)
+    flowsheet_version_id = create_flowsheet_version(client, flowsheet_id)
+
+    # Minimal flowsheet: Feed -> Product
+    nodes = [
+        {
+            "id": "feed-1",
+            "type": "feed",
+            "data": {
+                "type": "feed",
+                "label": "Руда",
+                "parameters": {"tph": 100, "solids_pct": 100, "f80_mm": 150},
+            },
+        },
+        {
+            "id": "product-1",
+            "type": "product",
+            "data": {
+                "type": "product",
+                "label": "Продукт",
+                "parameters": {},
+            },
+        },
+    ]
+
+    edges = [
+        {
+            "id": "e1",
+            "source": "feed-1",
+            "target": "product-1",
+            "sourceHandle": "out",
+            "targetHandle": "in",
+        },
+    ]
+
+    payload = {
+        "flowsheet_version_id": flowsheet_version_id,
+        "project_id": None,
+        "scenario_id": None,
+        "scenario_name": "Test Run",
+        "comment": "Testing run-and-save",
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+    resp = client.post("/api/calc-runs/run-and-save", json=payload, headers=headers)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["flowsheet_version_id"] == flowsheet_version_id
+    assert body["scenario_name"] == "Test Run"
+    assert body["status"] in ("success", "error")
+    assert "id" in body
+    assert body["result_json"] is not None
+    assert "global_kpi" in body["result_json"]
