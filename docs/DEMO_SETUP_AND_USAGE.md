@@ -28,7 +28,7 @@
 scripts\demo-up.bat
 
 # или напрямую из корня репо
-docker-compose -f docker-compose.demo.yml up --build
+docker-compose -f docker-compose.dev.yml up --build
 ```
 
 **Первый запуск (2-3 минуты):**
@@ -50,16 +50,16 @@ docker-compose -f docker-compose.demo.yml up --build
 **Логи (для отладки):**
 ```bash
 # Backend logs
-docker-compose -f docker-compose.demo.yml logs backend -f
+docker-compose -f docker-compose.dev.yml logs backend -f
 
 # Frontend logs
-docker-compose -f docker-compose.demo.yml logs frontend -f
+docker-compose -f docker-compose.dev.yml logs frontend -f
 
 # PostgreSQL logs
-docker-compose -f docker-compose.demo.yml logs db -f
+docker-compose -f docker-compose.dev.yml logs db -f
 
 # All
-docker-compose -f docker-compose.demo.yml logs -f
+docker-compose -f docker-compose.dev.yml logs -f
 ```
 
 **Остановить:**
@@ -68,7 +68,7 @@ docker-compose -f docker-compose.demo.yml logs -f
 Ctrl+C
 
 # Полная остановка
-docker-compose -f docker-compose.demo.yml down
+docker-compose -f docker-compose.dev.yml down
 ```
 
 **Очистить всё (новая БД):**
@@ -80,17 +80,17 @@ docker-compose -f docker-compose.demo.yml down
 scripts\demo-up.bat clean
 
 # или напрямую
-docker-compose -f docker-compose.demo.yml down -v
+docker-compose -f docker-compose.dev.yml down -v
 ```
 
 **Если что-то не так:**
 ```bash
 # Пересобрать образы (без кеша)
-docker-compose -f docker-compose.demo.yml up --build --force-recreate
+docker-compose -f docker-compose.dev.yml up --build --force-recreate
 
 # Полная очистка и свежий запуск
-docker-compose -f docker-compose.demo.yml down -v
-docker-compose -f docker-compose.demo.yml up --build
+docker-compose -f docker-compose.dev.yml down -v
+docker-compose -f docker-compose.dev.yml up --build
 ```
 
 ---
@@ -115,7 +115,6 @@ scripts\demo.ps1 -BackendPort 8001
 > Требования: установленный backend venv с зависимостями (`backend/.venv`), установленные frontend-зависимости (`frontend/node_modules`).
 
 ---
-
 ### 1. Инициализация БД с демо-данными
 
 ```bash
@@ -158,6 +157,7 @@ python scripts/smoke_api.py
 # [OK] 16 smoke checks passed ✅
 ```
 
+<<<<<<< HEAD
 ### 4a. Проверить графики и PSD (быстрый UI чек)
 
 1. Откройте фронтенд: http://localhost:5173
@@ -167,6 +167,8 @@ python scripts/smoke_api.py
     - Поменяйте версию схемы — фильтр применяется к графикам
 4. Откройте деталь расчёта: должны отображаться PSD-графики и значения P80/P50 (Fact vs Model)
 
+=======
+>>>>>>> origin/main
 ### 5. Открыть приложение
 
 ```
@@ -476,6 +478,7 @@ tail -f backend/logs/app.log
 
 ## 🎬 Готовые demo scripts
 
+<<<<<<< HEAD
 ### Script 0: Windows PowerShell (локальная разработка)
 
 ```powershell
@@ -508,6 +511,8 @@ docker-compose -f docker-compose.demo.yml down -v  # cleanup
 ```
 
 ---
+=======
+>>>>>>> origin/main
 ### Script 1: Full Demo Setup
 
 ```bash
