@@ -314,10 +314,16 @@ export type ProjectSummary = {
 export type ProjectFlowsheetVersion = {
   id: string;
   flowsheet_id?: string;
+  flowsheet_version_id?: string;
+  flowsheet_name?: string;
+  flowsheet_version_label?: string;
   version_label?: string;
   status?: string;
   is_active?: boolean;
   comment?: string | null;
+  plant_id?: string;
+  model_name?: string | null;
+  updated_at?: string | null;
 };
 
 export type ProjectCalcRunListItem = {

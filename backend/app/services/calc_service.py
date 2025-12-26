@@ -435,10 +435,52 @@ def run_grind_mvp_calculation(db: Session, payload: GrindMvpInput) -> dict:
         if link_exists is None:
             raise CalculationError("Flowsheet version is not linked to project")
     else:
-        # For ad-hoc runs without a project, validate flowsheet_version exists
+        # For ad-hoc runs without a project, ensure referenced FlowsheetVersion exists.
+        # If not, auto-create minimal Plant/Flowsheet/Version to satisfy FK constraints.
         fv_exists = db.get(models.FlowsheetVersion, flowsheet_version_id)
         if fv_exists is None:
-            raise CalculationError(f"Flowsheet version {flowsheet_version_id} not found")
+            # Normalize plant_id similarly to a UUID
+            def _normalize_uuid(raw: Any) -> uuid.UUID:
+                try:
+                    return uuid.UUID(str(raw))
+                except Exception:
+                    return uuid.uuid5(uuid.NAMESPACE_URL, str(raw))
+
+            plant_uuid = _normalize_uuid(payload.plant_id)
+            plant = db.get(models.Plant, plant_uuid)
+            if plant is None:
+                plant = models.Plant(id=plant_uuid, name="Ad-hoc Plant", is_active=True)
+                db.add(plant)
+                db.flush()
+
+            flowsheet = (
+                db.query(models.Flowsheet)
+                .filter(
+                    models.Flowsheet.plant_id == plant.id,
+                    models.Flowsheet.name == "Ad-hoc Flowsheet",
+                )
+                .first()
+            )
+            if flowsheet is None:
+                flowsheet = models.Flowsheet(
+                    plant_id=plant.id,
+                    name="Ad-hoc Flowsheet",
+                    status="ACTIVE",
+                    description="Auto-created for ad-hoc Grind MVP run",
+                )
+                db.add(flowsheet)
+                db.flush()
+
+            fv_exists = models.FlowsheetVersion(
+                id=flowsheet_version_id,
+                flowsheet_id=flowsheet.id,
+                version_label="Ad-hoc v1",
+                status="ACTIVE",
+                is_active=True,
+                comment="Auto-created for ad-hoc Grind MVP run",
+            )
+            db.add(fv_exists)
+            db.flush()
 
     if scenario_id_value:
         payload_dict["scenario_id"] = str(scenario_id_value)

@@ -716,7 +716,7 @@ def add_project_member(
 @router.delete("/{project_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_project_member(
     project_id: str,
-    user_id: int,
+    user_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
