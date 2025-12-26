@@ -10,6 +10,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: grindlab_test
+        ports:
+        - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
@@ -34,6 +49,8 @@ jobs:
     - name: Reset database
       working-directory: backend
       shell: bash
+      env:
+        DB_URL: postgresql://postgres:postgres@localhost:5432/grindlab_test
       run: |
         source .venv/bin/activate
         python scripts/reset_db.py
@@ -41,6 +58,8 @@ jobs:
     - name: Start backend
       working-directory: backend
       shell: bash
+      env:
+        DB_URL: postgresql://postgres:postgres@localhost:5432/grindlab_test
       run: |
         source .venv/bin/activate
         python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &

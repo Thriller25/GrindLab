@@ -1,0 +1,81 @@
+.flowsheet-kpi-comparison {
+  margin-top: 2rem;
+}
+
+.flowsheet-kpi-comparison.empty {
+  padding: 2rem;
+  text-align: center;
+  background-color: #f9fafb;
+  border-radius: 8px;
+}
+
+.kpi-chart-container {
+  margin-bottom: 3rem;
+  padding: 1.5rem;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.kpi-chart-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.kpi-summary-table {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.kpi-summary-table h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.kpi-summary-table .table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.kpi-summary-table .table th {
+  text-align: left;
+  padding: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 2px solid #e5e7eb;
+  font-size: 0.875rem;
+}
+
+.kpi-summary-table .table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.kpi-summary-table .table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+.text-success {
+  color: #10b981;
+  font-weight: 500;
+}
+
+.text-danger {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.muted.small {
+  font-size: 0.75rem;
+}

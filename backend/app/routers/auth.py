@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import jwt
 from app import models
 from app.core.security import (
@@ -77,7 +79,7 @@ async def get_current_user(
         user_id_raw: str | None = payload.get("sub")
         if user_id_raw is None:
             raise credentials_exception
-        user_id = int(user_id_raw)
+        user_id = UUID(user_id_raw)
     except (jwt.PyJWTError, ValueError, TypeError):
         raise credentials_exception
 
@@ -98,7 +100,7 @@ async def get_current_user_optional(
         user_id_raw: str | None = payload.get("sub")
         if user_id_raw is None:
             return None
-        user_id = int(user_id_raw)
+        user_id = UUID(user_id_raw)
     except (jwt.PyJWTError, ValueError, TypeError):
         return None
 

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -20,7 +21,7 @@ class UserCreate(UserBase):
 
 
 class UserRead(UserBase):
-    id: int
+    id: UUID
     is_active: bool
     is_superuser: bool
     created_at: datetime

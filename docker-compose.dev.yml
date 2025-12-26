@@ -1,26 +1,67 @@
 # GrindLab Docker Compose - Development Override
-# Use: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# This adds PostgreSQL and hot-reload for backend/frontend development
 
 services:
+  # PostgreSQL Database (matches production)
+  db:
+    image: postgres:16-alpine
+    container_name: grindlab-dev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: grindlab_dev
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: grindlab_dev
+    ports:
+    - 5432:5432
+    volumes:
+    - grindlab-dev-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U grindlab_dev -d grindlab_dev]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build:
-      target: builder  # Use builder stage for dev (includes dev dependencies)
+      target: builder
+    container_name: grindlab-dev-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
     - DEBUG=true
+    - DB_URL=postgresql://grindlab_dev:dev_password@db:5432/grindlab_dev
+    - SECRET_KEY=dev-secret-key-not-for-production
+    - CORS_ORIGINS=http://localhost,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
+    - PYTHONUNBUFFERED=1
     volumes:
-      # Mount source code with write access for hot reload
     - ./backend/app:/app/app
     - ./backend/migrations:/app/migrations
+    ports:
+    - 8000:8000
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
+    container_name: grindlab-dev-frontend
+    restart: unless-stopped
+    depends_on:
+    - backend
     volumes:
     - ./frontend/src:/app/src
     - ./frontend/public:/app/public
     - ./frontend/index.html:/app/index.html
     ports:
     - 5173:5173
-    command: [npm, run, dev, --, --host, 0.0.0.0]
+    environment:
+    - VITE_API_BASE_URL=http://localhost:8000
+    command: [npm, run, dev, --, --host, 0.0.0.0, --port, '5173']
+
+volumes:
+  grindlab-dev-postgres-data:
+    name: grindlab-dev-postgres-data

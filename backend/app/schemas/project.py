@@ -34,7 +34,7 @@ class ProjectCreate(ProjectBase):
 
 class ProjectRead(ProjectBase):
     id: int
-    owner_user_id: Optional[int] = None
+    owner_user_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 
