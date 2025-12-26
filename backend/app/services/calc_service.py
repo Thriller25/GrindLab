@@ -434,6 +434,11 @@ def run_grind_mvp_calculation(db: Session, payload: GrindMvpInput) -> dict:
         )
         if link_exists is None:
             raise CalculationError("Flowsheet version is not linked to project")
+    else:
+        # For ad-hoc runs without a project, validate flowsheet_version exists
+        fv_exists = db.get(models.FlowsheetVersion, flowsheet_version_id)
+        if fv_exists is None:
+            raise CalculationError(f"Flowsheet version {flowsheet_version_id} not found")
 
     if scenario_id_value:
         payload_dict["scenario_id"] = str(scenario_id_value)
