@@ -50,7 +50,7 @@ jobs:
       working-directory: backend
       shell: bash
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grindlab_test
+        DB_URL: postgresql://postgres:postgres@localhost:5432/grindlab_test
       run: |
         source .venv/bin/activate
         python scripts/reset_db.py
@@ -59,7 +59,7 @@ jobs:
       working-directory: backend
       shell: bash
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grindlab_test
+        DB_URL: postgresql://postgres:postgres@localhost:5432/grindlab_test
       run: |
         source .venv/bin/activate
         python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &

@@ -2,12 +2,16 @@
 
 import os
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     # URL базы данных для SQLAlchemy
-    db_url: str = "postgresql://grindlab:grindlab_password@localhost:5432/grindlab"
+    db_url: str = Field(
+        default="postgresql://grindlab:grindlab_password@localhost:5432/grindlab",
+        validation_alias=AliasChoices("DB_URL", "DATABASE_URL", "db_url"),
+    )
 
     # Флаг для включения debug-режима FastAPI (пока просто bool)
     app_debug: bool = True
