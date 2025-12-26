@@ -892,18 +892,6 @@ export const ScenarioComparePage = () => {
     navigate(`/calc-runs/${id}`);
   };
 
-  const toggleBatchScenario = (scenarioId: string) => {
-    setBatchSelectedScenarioIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(scenarioId)) {
-        next.delete(scenarioId);
-      } else {
-        next.add(scenarioId);
-      }
-      return next;
-    });
-  };
-
   const handleBatchRunScenarios = async () => {
     if (!projectId || !flowsheetVersionId || batchSelectedScenarioIds.size === 0) {
       setBatchError("Выберите хотя бы один сценарий для запуска");
@@ -1498,6 +1486,14 @@ export const ScenarioComparePage = () => {
                     Выберите несколько сценариев и используйте кнопку "Запустить выбранные".
                   </p>
                   <div className="actions" style={{ marginTop: 12 }}>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={handleBatchRunScenarios}
+                      disabled={batchRunning}
+                    >
+                      Запустить выбранные
+                    </button>
                     <button
                       className="btn secondary"
                       type="button"
